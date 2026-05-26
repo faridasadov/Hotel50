@@ -1,0 +1,5 @@
+hotel50.db
+hotel50.db-*
+backups/
+__pycache__/
+*.pyc

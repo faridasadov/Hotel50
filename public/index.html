@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="az">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hotel 50</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section class="login-screen" id="loginScreen">
+      <form class="login-card" id="loginForm">
+        <p class="eyebrow">Admin giriş</p>
+        <h1>Hotel 50</h1>
+        <label>İstifadəçi adı<input name="username" autocomplete="username" value="admin" required /></label>
+        <label>Şifrə<input name="password" type="password" autocomplete="current-password" required /></label>
+        <button type="submit">Daxil ol</button>
+        <p class="login-error" id="loginError"></p>
+      </form>
+    </section>
+
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Hotel idarəetməsi</p>
+        <h1>Hotel 50</h1>
+      </div>
+      <div class="topbar-actions">
+        <span class="user-chip" id="userChip"></span>
+        <button id="backupBtn" class="icon-button" title="Backup">⇩</button>
+        <button id="refreshBtn" class="icon-button" title="Yenilə">↻</button>
+        <button id="logoutBtn" class="icon-button" title="Çıxış">×</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="stats" id="stats"></section>
+
+      <section class="workspace">
+        <nav class="tabs" aria-label="Bölmələr">
+          <button class="tab active" data-tab="bookings">Bronlar</button>
+          <button class="tab" data-tab="rooms">Otaqlar</button>
+          <button class="tab" data-tab="guests">Qonaqlar</button>
+          <button class="tab" data-tab="payments">Ödənişlər</button>
+          <button class="tab accounting-only" data-tab="expenses">Xərclər</button>
+          <button class="tab" data-tab="proposals">Təkliflər</button>
+          <button class="tab admin-only" data-tab="users">İstifadəçilər</button>
+          <button class="tab admin-only" data-tab="audit">Audit</button>
+        </nav>
+
+        <section class="panel active" id="bookings">
+          <div class="panel-head">
+            <h2>Bronlar və qalma</h2>
+          </div>
+          <form id="bookingForm" class="form-grid">
+            <label>Qonaq<select name="guest_id" required></select></label>
+            <label>Otaq<select name="room_id" required></select></label>
+            <label>Giriş<input name="check_in" type="date" required /></label>
+            <label>Çıxış<input name="check_out" type="date" required /></label>
+            <label>Nəfər<input name="people_count" type="number" min="1" value="1" required /></label>
+            <label>Məbləğ<input name="total_amount" type="number" min="0" step="0.01" required /></label>
+            <label>Status<select name="status"><option>Reserved</option><option>CheckedIn</option></select></label>
+            <label>Qeyd<input name="note" placeholder="Opsional" /></label>
+            <button type="submit">Bron əlavə et</button>
+          </form>
+          <div class="table-wrap"><table id="bookingTable"></table></div>
+        </section>
+
+        <section class="panel" id="rooms">
+          <div class="panel-head"><h2>Otaqlar</h2></div>
+          <form id="roomForm" class="form-grid">
+            <label>Nömrə<input name="number" required placeholder="101" /></label>
+            <label>Mərtəbə<input name="floor" type="number" min="1" value="1" required /></label>
+            <label>Tip<input name="room_type" value="Standard" required /></label>
+            <label>Tutum<input name="capacity" type="number" min="1" value="2" required /></label>
+            <label>Gecəlik AZN<input name="nightly_rate" type="number" min="0" step="0.01" value="45" required /></label>
+            <label>Qeyd<input name="note" /></label>
+            <button type="submit">Otaq əlavə et</button>
+          </form>
+          <div class="table-wrap"><table id="roomTable"></table></div>
+        </section>
+
+        <section class="panel" id="guests">
+          <div class="panel-head"><h2>Qonaqlar</h2></div>
+          <form id="guestForm" class="form-grid">
+            <label>Ad soyad<input name="full_name" required /></label>
+            <label>Telefon<input name="phone" /></label>
+            <label>Sənəd No<input name="document_no" /></label>
+            <label>Qeyd<input name="note" /></label>
+            <button type="submit">Qonaq əlavə et</button>
+          </form>
+          <div class="table-wrap"><table id="guestTable"></table></div>
+        </section>
+
+        <section class="panel" id="payments">
+          <div class="panel-head"><h2>Ödənişlər</h2></div>
+          <form id="paymentForm" class="form-grid">
+            <label>Bron<select name="booking_id" required></select></label>
+            <label>Məbləğ<input name="amount" type="number" min="0" step="0.01" required /></label>
+            <label>Metod<select name="method"><option>Cash</option><option>Card</option><option>Transfer</option></select></label>
+            <label>Tarix<input name="paid_at" type="date" required /></label>
+            <label>Qeyd<input name="note" /></label>
+            <button type="submit">Ödəniş əlavə et</button>
+          </form>
+          <div class="table-wrap"><table id="paymentTable"></table></div>
+        </section>
+
+        <section class="panel accounting-only" id="expenses">
+          <div class="panel-head"><h2>Xərclər</h2></div>
+          <form id="expenseForm" class="form-grid">
+            <label>Kateqoriya<select name="category"><option>Maaş</option><option>Kommunal</option><option>Təmir</option><option>Təmizlik</option><option>Ərzaq</option><option>Digər</option></select></label>
+            <label>Məbləğ<input name="amount" type="number" min="0" step="0.01" required /></label>
+            <label>Tarix<input name="spent_at" type="date" required /></label>
+            <label>Qeyd<input name="note" /></label>
+            <button type="submit">Xərc əlavə et</button>
+          </form>
+          <div class="table-wrap"><table id="expenseTable"></table></div>
+        </section>
+
+        <section class="panel" id="proposals">
+          <div class="panel-head"><h2>Təkliflər siyahısı</h2></div>
+          <form id="proposalForm" class="form-grid admin-only">
+            <label>Başlıq<input name="title" required /></label>
+            <label>Kateqoriya<input name="category" value="Funksiya" required /></label>
+            <label>Prioritet<select name="priority"><option>Yüksək</option><option>Orta</option><option>Aşağı</option></select></label>
+            <label>Status<select name="status"><option>Təklif</option><option>Seçildi</option><option>İcrada</option><option>Hazır</option><option>Gözləyir</option></select></label>
+            <label class="wide">Təsvir<input name="description" /></label>
+            <button type="submit">Təklif əlavə et</button>
+          </form>
+          <div class="table-wrap"><table id="proposalTable"></table></div>
+        </section>
+
+        <section class="panel admin-only" id="users">
+          <div class="panel-head"><h2>İstifadəçilər</h2></div>
+          <form id="userForm" class="form-grid">
+            <label>Username<input name="username" required /></label>
+            <label>Ad soyad<input name="full_name" required /></label>
+            <label>Rol<select name="role"><option>Reception</option><option>Accounting</option><option>Admin</option></select></label>
+            <label>Şifrə<input name="password" type="password" minlength="6" required /></label>
+            <button type="submit">İstifadəçi əlavə et</button>
+          </form>
+          <div class="table-wrap"><table id="userTable"></table></div>
+        </section>
+
+        <section class="panel admin-only" id="audit">
+          <div class="panel-head"><h2>Audit log</h2></div>
+          <div class="table-wrap"><table id="auditTable"></table></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
