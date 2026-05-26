@@ -1,0 +1,24 @@
+[Unit]
+Description=Hotel 50 Management System
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/github-projects/hotel-50
+ExecStart=/usr/bin/python3 -u app.py
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hotel50
+
+# Environment (istəsəniz dəyişdirin)
+Environment=PORT=8020
+# Environment=ADMIN_USER=admin
+# Environment=ADMIN_PASSWORD_HASH=scrypt:...
+
+[Install]
+WantedBy=multi-user.target
