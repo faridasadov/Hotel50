@@ -29,6 +29,8 @@ LOGIN_MAX_ATTEMPTS = 8
 LOGIN_ATTEMPTS = {}
 SESSIONS = {}
 ROLES = {"Admin", "Reception", "Accounting"}
+OPS_ROLES = {"Admin", "Reception"}
+MONEY_ROLES = {"Admin", "Accounting"}
 
 
 def connect():
@@ -771,6 +773,8 @@ class Handler(SimpleHTTPRequestHandler):
                 audit(self.current_user["username"], "hotel.created", "hotel", hotel_id)
                 return self.send_json({"id": hotel_id}, 201)
             if path == "/api/guests":
+                if not self.require_auth(OPS_ROLES):
+                    return
                 guest_id = execute(
                     "INSERT INTO guests (full_name, phone, document_no, note) VALUES (?, ?, ?, ?)",
                     (
@@ -783,6 +787,8 @@ class Handler(SimpleHTTPRequestHandler):
                 audit(self.current_user["username"], "guest.created", "guest", guest_id)
                 return self.send_json({"id": guest_id}, 201)
             if path == "/api/bookings":
+                if not self.require_auth(OPS_ROLES):
+                    return
                 ok, message = has_capacity(integer(data.get("room_id")), str(data.get("check_in") or ""), str(data.get("check_out") or ""), integer(data.get("people_count"), 1))
                 if not ok:
                     return self.send_error_json(message, 400)
@@ -805,7 +811,7 @@ class Handler(SimpleHTTPRequestHandler):
                 audit(self.current_user["username"], "booking.created", "booking", booking_id)
                 return self.send_json({"id": booking_id}, 201)
             if path == "/api/payments":
-                if not self.require_auth({"Admin", "Accounting"}):
+                if not self.require_auth(MONEY_ROLES):
                     return
                 payment_id = execute(
                     "INSERT INTO payments (booking_id, amount, method, paid_at, note) VALUES (?, ?, ?, ?, ?)",
@@ -820,7 +826,7 @@ class Handler(SimpleHTTPRequestHandler):
                 audit(self.current_user["username"], "payment.created", "payment", payment_id)
                 return self.send_json({"id": payment_id}, 201)
             if path == "/api/expenses":
-                if not self.require_auth({"Admin", "Accounting"}):
+                if not self.require_auth(MONEY_ROLES):
                     return
                 expense_id = execute(
                     "INSERT INTO expenses (category, amount, spent_at, note) VALUES (?, ?, ?, ?)",
@@ -863,6 +869,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"deleted": deleted})
             guest_doc_match = path.strip("/").split("/")
             if len(guest_doc_match) == 4 and guest_doc_match[:2] == ["api", "guests"] and guest_doc_match[3] == "documents":
+                if not self.require_auth(OPS_ROLES):
+                    return
                 doc_id = execute(
                     "INSERT INTO guest_documents (guest_id, title, file_name, content_type, data) VALUES (?, ?, ?, ?, ?)",
                     (
@@ -875,6 +883,105 @@ class Handler(SimpleHTTPRequestHandler):
                 )
                 audit(self.current_user["username"], "document.created", "document", doc_id)
                 return self.send_json({"id": doc_id}, 201)
+            return self.send_error_json("Not found", 404)
+        except sqlite3.IntegrityError as exc:
+            return self.send_error_json(f"Məlumat düzgün deyil: {exc}", 400)
+        except Exception as exc:
+            return self.send_error_json(str(exc), 500)
+
+    def do_PUT(self):
+        path = urlparse(self.path).path
+        try:
+            if not self.require_auth():
+                return
+            data = json_body(self)
+            parts = path.strip("/").split("/")
+            if len(parts) == 3 and parts[:2] == ["api", "rooms"]:
+                if not self.require_auth({"Admin"}):
+                    return
+                execute(
+                    "UPDATE rooms SET number = ?, floor = ?, room_type = ?, capacity = ?, nightly_rate = ?, note = ?, hotel_id = ? WHERE id = ?",
+                    (
+                        str(data.get("number") or "").strip(),
+                        integer(data.get("floor"), 1),
+                        str(data.get("room_type") or "Standard"),
+                        integer(data.get("capacity"), 1),
+                        money(data.get("nightly_rate")),
+                        str(data.get("note") or ""),
+                        integer(data.get("hotel_id"), 1),
+                        integer(parts[2]),
+                    ),
+                )
+                audit(self.current_user["username"], "room.updated", "room", parts[2])
+                return self.send_json({"ok": True})
+            if len(parts) == 3 and parts[:2] == ["api", "guests"]:
+                if not self.require_auth(OPS_ROLES):
+                    return
+                execute(
+                    "UPDATE guests SET full_name = ?, phone = ?, document_no = ?, note = ? WHERE id = ?",
+                    (
+                        str(data.get("full_name") or "").strip(),
+                        str(data.get("phone") or ""),
+                        str(data.get("document_no") or ""),
+                        str(data.get("note") or ""),
+                        integer(parts[2]),
+                    ),
+                )
+                audit(self.current_user["username"], "guest.updated", "guest", parts[2])
+                return self.send_json({"ok": True})
+            if len(parts) == 3 and parts[:2] == ["api", "bookings"]:
+                if not self.require_auth(OPS_ROLES):
+                    return
+                ok, message = has_capacity(integer(data.get("room_id")), str(data.get("check_in") or ""), str(data.get("check_out") or ""), integer(data.get("people_count"), 1), integer(parts[2]))
+                if not ok:
+                    return self.send_error_json(message, 400)
+                execute(
+                    "UPDATE bookings SET guest_id = ?, room_id = ?, check_in = ?, check_out = ?, status = ?, people_count = ?, total_amount = ?, note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (
+                        integer(data.get("guest_id")),
+                        integer(data.get("room_id")),
+                        str(data.get("check_in") or ""),
+                        str(data.get("check_out") or ""),
+                        str(data.get("status") or "Reserved"),
+                        integer(data.get("people_count"), 1),
+                        money(data.get("total_amount")),
+                        str(data.get("note") or ""),
+                        integer(parts[2]),
+                    ),
+                )
+                audit(self.current_user["username"], "booking.updated", "booking", parts[2])
+                return self.send_json({"ok": True})
+            if len(parts) == 3 and parts[:2] == ["api", "payments"]:
+                if not self.require_auth(MONEY_ROLES):
+                    return
+                execute(
+                    "UPDATE payments SET booking_id = ?, amount = ?, method = ?, paid_at = ?, note = ? WHERE id = ?",
+                    (
+                        integer(data.get("booking_id")),
+                        money(data.get("amount")),
+                        str(data.get("method") or "Cash"),
+                        str(data.get("paid_at") or date.today().isoformat()),
+                        str(data.get("note") or ""),
+                        integer(parts[2]),
+                    ),
+                )
+                audit(self.current_user["username"], "payment.updated", "payment", parts[2])
+                return self.send_json({"ok": True})
+            if len(parts) == 3 and parts[:2] == ["api", "expenses"]:
+                if not self.require_auth(MONEY_ROLES):
+                    return
+                execute(
+                    "UPDATE expenses SET category = ?, amount = ?, spent_at = ?, note = ? WHERE id = ?",
+                    (
+                        str(data.get("category") or "").strip(),
+                        money(data.get("amount")),
+                        str(data.get("spent_at") or date.today().isoformat()),
+                        str(data.get("note") or ""),
+                        integer(parts[2]),
+                    ),
+                )
+                audit(self.current_user["username"], "expense.updated", "expense", parts[2])
+                return self.send_json({"ok": True})
             return self.send_error_json("Not found", 404)
         except sqlite3.IntegrityError as exc:
             return self.send_error_json(f"Məlumat düzgün deyil: {exc}", 400)
@@ -895,6 +1002,38 @@ class Handler(SimpleHTTPRequestHandler):
                 target.unlink()
                 audit(self.current_user["username"], "backup.deleted", "backup", name)
                 return self.send_json({"ok": True, "deleted": name})
+            if len(parts) == 3 and parts[:2] == ["api", "rooms"]:
+                if not self.require_auth({"Admin"}):
+                    return
+                execute("DELETE FROM rooms WHERE id = ?", (integer(parts[2]),))
+                audit(self.current_user["username"], "room.deleted", "room", parts[2])
+                return self.send_json({"ok": True})
+            if len(parts) == 3 and parts[:2] == ["api", "guests"]:
+                if not self.require_auth({"Admin"}):
+                    return
+                execute("DELETE FROM guest_documents WHERE guest_id = ?", (integer(parts[2]),))
+                execute("DELETE FROM guests WHERE id = ?", (integer(parts[2]),))
+                audit(self.current_user["username"], "guest.deleted", "guest", parts[2])
+                return self.send_json({"ok": True})
+            if len(parts) == 3 and parts[:2] == ["api", "bookings"]:
+                if not self.require_auth(OPS_ROLES):
+                    return
+                execute("DELETE FROM payments WHERE booking_id = ?", (integer(parts[2]),))
+                execute("DELETE FROM bookings WHERE id = ?", (integer(parts[2]),))
+                audit(self.current_user["username"], "booking.deleted", "booking", parts[2])
+                return self.send_json({"ok": True})
+            if len(parts) == 3 and parts[:2] == ["api", "payments"]:
+                if not self.require_auth(MONEY_ROLES):
+                    return
+                execute("DELETE FROM payments WHERE id = ?", (integer(parts[2]),))
+                audit(self.current_user["username"], "payment.deleted", "payment", parts[2])
+                return self.send_json({"ok": True})
+            if len(parts) == 3 and parts[:2] == ["api", "expenses"]:
+                if not self.require_auth(MONEY_ROLES):
+                    return
+                execute("DELETE FROM expenses WHERE id = ?", (integer(parts[2]),))
+                audit(self.current_user["username"], "expense.deleted", "expense", parts[2])
+                return self.send_json({"ok": True})
             return self.send_error_json("Not found", 404)
         except Exception as exc:
             return self.send_error_json(str(exc), 500)
@@ -906,6 +1045,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             parts = path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["api", "bookings"] and parts[3] == "status":
+                if not self.require_auth(OPS_ROLES):
+                    return
                 data = json_body(self)
                 status = str(data.get("status") or "")
                 if status not in {"Reserved", "CheckedIn", "CheckedOut", "Cancelled"}:
@@ -927,6 +1068,8 @@ class Handler(SimpleHTTPRequestHandler):
                 audit(self.current_user["username"], f"room.cleaning.{status}", "room", parts[2])
                 return self.send_json({"ok": True})
             if len(parts) == 4 and parts[:2] == ["api", "booking-requests"] and parts[3] == "status":
+                if not self.require_auth(OPS_ROLES):
+                    return
                 data = json_body(self)
                 status = str(data.get("status") or "")
                 if status not in {"Yeni", "Baxılır", "Təsdiq", "İmtina"}:
@@ -935,7 +1078,7 @@ class Handler(SimpleHTTPRequestHandler):
                 audit(self.current_user["username"], f"booking_request.{status}", "booking_request", parts[2])
                 return self.send_json({"ok": True})
             if len(parts) == 4 and parts[:2] == ["api", "bookings"] and parts[3] == "late-fee":
-                if not self.require_auth({"Admin", "Accounting"}):
+                if not self.require_auth(MONEY_ROLES):
                     return
                 data = json_body(self)
                 amount = money(data.get("late_fee"))
