@@ -215,6 +215,8 @@ button[type="submit"] {
   border-radius: 8px;
 }
 
+.mt { margin-top: 14px; }
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -250,14 +252,11 @@ tr:last-child td { border-bottom: 0; }
 .status.Reserved { color: var(--warn); background: #fffaeb; }
 .status.CheckedOut { color: #344054; background: #f2f4f7; }
 .status.Cancelled { color: var(--danger); background: #fef3f2; }
-.status.Seçildi { color: #175cd3; background: #eff8ff; }
-.status.İcrada { color: var(--warn); background: #fffaeb; }
 .status.Hazır { color: var(--ok); background: #ecfdf3; }
-.status.Gözləyir { color: #344054; background: #f2f4f7; }
-.status.Təklif { color: #5925dc; background: #f4f3ff; }
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -267,6 +266,21 @@ tr:last-child td { border-bottom: 0; }
   background: #fff;
   padding: 7px 9px;
   cursor: pointer;
+}
+
+#exportBtn, #createBackupBtn, #deleteSelectedBackupsBtn {
+  border: 0;
+  border-radius: 7px;
+  padding: 11px 14px;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+#deleteSelectedBackupsBtn {
+  background: var(--danger);
+  margin-left: 8px;
 }
 
 @media (max-width: 900px) {

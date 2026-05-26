@@ -3,14 +3,16 @@ import json
 import os
 import hashlib
 import hmac
+import csv
+import io
 import sqlite3
 import shutil
 import secrets
 import time
-from datetime import date
+from datetime import date, datetime
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
@@ -51,6 +53,13 @@ def init_db():
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS hotels (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL UNIQUE,
+              address TEXT DEFAULT '',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS guests (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               full_name TEXT NOT NULL,
@@ -69,6 +78,7 @@ def init_db():
               status TEXT NOT NULL DEFAULT 'Reserved',
               people_count INTEGER NOT NULL DEFAULT 1,
               total_amount REAL NOT NULL DEFAULT 0,
+              late_fee REAL NOT NULL DEFAULT 0,
               note TEXT DEFAULT '',
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -96,13 +106,26 @@ def init_db():
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
-            CREATE TABLE IF NOT EXISTS proposals (
+            CREATE TABLE IF NOT EXISTS guest_documents (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
+              guest_id INTEGER NOT NULL,
               title TEXT NOT NULL,
-              category TEXT NOT NULL DEFAULT 'Funksiya',
-              priority TEXT NOT NULL DEFAULT 'Orta',
-              status TEXT NOT NULL DEFAULT 'Təklif',
-              description TEXT DEFAULT '',
+              file_name TEXT NOT NULL,
+              content_type TEXT DEFAULT 'application/octet-stream',
+              data TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (guest_id) REFERENCES guests(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS booking_requests (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              full_name TEXT NOT NULL,
+              phone TEXT DEFAULT '',
+              check_in TEXT DEFAULT '',
+              check_out TEXT DEFAULT '',
+              people_count INTEGER NOT NULL DEFAULT 1,
+              note TEXT DEFAULT '',
+              status TEXT NOT NULL DEFAULT 'Yeni',
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -128,6 +151,19 @@ def init_db():
             );
             """
         )
+        for sql in [
+            "ALTER TABLE rooms ADD COLUMN cleaning_status TEXT DEFAULT 'Təmiz'",
+            "ALTER TABLE rooms ADD COLUMN hotel_id INTEGER DEFAULT 1",
+            "ALTER TABLE bookings ADD COLUMN late_fee REAL NOT NULL DEFAULT 0",
+        ]:
+            try:
+                db.execute(sql)
+            except sqlite3.OperationalError:
+                pass
+
+        hotel_count = db.execute("SELECT COUNT(*) AS c FROM hotels").fetchone()["c"]
+        if hotel_count == 0:
+            db.execute("INSERT INTO hotels (name, address) VALUES (?, ?)", ("Hotel 50", "Qarabağ bölgəsi"))
 
         user_count = db.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
         if user_count == 0:
@@ -146,25 +182,6 @@ def init_db():
             db.executemany(
                 "INSERT INTO rooms (number, floor, room_type, capacity, nightly_rate, note) VALUES (?, ?, ?, ?, ?, ?)",
                 rooms,
-            )
-
-        proposal_count = db.execute("SELECT COUNT(*) AS c FROM proposals").fetchone()["c"]
-        if proposal_count == 0:
-            proposals = [
-                ("Otaq təqvimi", "Bron", "Yüksək", "Təklif", "Ay/gün görünüşündə otaqların dolu və boş tarixlərini göstərmək."),
-                ("Check-in sənəd yükləmə", "Qonaq", "Yüksək", "Təklif", "Şəxsiyyət vəsiqəsi və müqavilə fayllarını qonaq kartına əlavə etmək."),
-                ("PDF qəbz", "Mühasibat", "Yüksək", "Təklif", "Ödənişdən sonra qəbzi PDF kimi yaratmaq və çap etmək."),
-                ("Aylıq hesabat export", "Hesabat", "Yüksək", "Təklif", "Gəlir, xərc, borc və doluluğu CSV/Excel faylına çıxarmaq."),
-                ("Otaq təmizlik statusu", "Servis", "Orta", "Təklif", "Otaqları Təmiz, Təmizlikdə, Təmir lazımdır statusları ilə izləmək."),
-                ("Borclular siyahısı", "Mühasibat", "Yüksək", "Təklif", "Qalıq borcu olan qonaqları ayrıca siyahıda göstərmək."),
-                ("Gec çıxış və əlavə ödəniş", "Bron", "Orta", "Təklif", "Check-out gecikəndə əlavə ödəniş hesablamaq."),
-                ("Online rezervasiya forması", "Portal", "Orta", "Təklif", "Müştərinin kənardan bron sorğusu göndərməsi üçün sadə forma."),
-                ("SMS/WhatsApp xatırlatma", "Bildiriş", "Aşağı", "Təklif", "Giriş, çıxış və borc xatırlatmalarını göndərmək."),
-                ("Backup restore", "Admin", "Yüksək", "Təklif", "Yaradılmış backup faylından database-i bərpa etmək."),
-            ]
-            db.executemany(
-                "INSERT INTO proposals (title, category, priority, status, description) VALUES (?, ?, ?, ?, ?)",
-                proposals,
             )
 
 
@@ -312,12 +329,48 @@ def audit(username, action, entity, entity_id="", note=""):
     )
 
 
+def days_between(start, end):
+    try:
+        s = datetime.strptime(start, "%Y-%m-%d").date()
+        e = datetime.strptime(end, "%Y-%m-%d").date()
+        return max((e - s).days, 1)
+    except Exception:
+        return 1
+
+
+def has_capacity(room_id, check_in, check_out, people_count, exclude_booking_id=None):
+    room = row("SELECT capacity FROM rooms WHERE id = ?", (room_id,))
+    if not room:
+        return False, "Otaq tapılmadı"
+    params = [room_id, check_out, check_in]
+    extra = ""
+    if exclude_booking_id:
+        extra = " AND id <> ?"
+        params.append(exclude_booking_id)
+    existing = row(
+        f"""
+        SELECT COALESCE(SUM(people_count), 0) AS people
+        FROM bookings
+        WHERE room_id = ?
+          AND status IN ('Reserved', 'CheckedIn')
+          AND check_in < ?
+          AND check_out > ?
+          {extra}
+        """,
+        tuple(params),
+    )
+    used = integer(existing["people"] if existing else 0)
+    if used + integer(people_count, 1) > integer(room["capacity"], 1):
+        return False, "Bu tarix aralığında otaqda kifayət qədər boş yer yoxdur"
+    return True, ""
+
+
 def booking_select(where="", params=()):
     sql = f"""
       SELECT b.*, g.full_name AS guest_name, g.phone AS guest_phone,
              r.number AS room_number, r.capacity AS room_capacity,
              COALESCE(SUM(p.amount), 0) AS paid_amount,
-             b.total_amount - COALESCE(SUM(p.amount), 0) AS balance
+             b.total_amount + COALESCE(b.late_fee, 0) - COALESCE(SUM(p.amount), 0) AS balance
       FROM bookings b
       JOIN guests g ON g.id = b.guest_id
       JOIN rooms r ON r.id = b.room_id
@@ -333,14 +386,55 @@ def room_list():
     return rows(
         """
         SELECT r.*,
+          h.name AS hotel_name,
           COALESCE(SUM(CASE WHEN b.status = 'CheckedIn' THEN b.people_count ELSE 0 END), 0) AS occupied,
           r.capacity - COALESCE(SUM(CASE WHEN b.status = 'CheckedIn' THEN b.people_count ELSE 0 END), 0) AS free_beds
         FROM rooms r
+        LEFT JOIN hotels h ON h.id = r.hotel_id
         LEFT JOIN bookings b ON b.room_id = r.id
         GROUP BY r.id
         ORDER BY r.floor, r.number
         """
     )
+
+
+def debtors():
+    return rows(
+        """
+        SELECT * FROM (
+          SELECT b.*, g.full_name AS guest_name, g.phone AS guest_phone,
+                 r.number AS room_number,
+                 COALESCE(SUM(p.amount), 0) AS paid_amount,
+                 b.total_amount + COALESCE(b.late_fee, 0) - COALESCE(SUM(p.amount), 0) AS balance
+          FROM bookings b
+          JOIN guests g ON g.id = b.guest_id
+          JOIN rooms r ON r.id = b.room_id
+          LEFT JOIN payments p ON p.booking_id = b.id
+          WHERE b.status IN ('Reserved', 'CheckedIn')
+          GROUP BY b.id
+        ) items
+        WHERE balance > 0
+        ORDER BY balance DESC
+        """
+    )
+
+
+def calendar_items():
+    return {
+        "rooms": room_list(),
+        "bookings": booking_select("WHERE b.status IN ('Reserved', 'CheckedIn')"),
+    }
+
+
+def reminders():
+    today = date.today().isoformat()
+    due = debtors()
+    arrivals = booking_select("WHERE b.check_in = ? AND b.status = 'Reserved'", (today,))
+    departures = booking_select("WHERE b.check_out = ? AND b.status = 'CheckedIn'", (today,))
+    for item in due:
+        text = f"Salam {item['guest_name']}, Hotel 50 üzrə qalıq borcunuz: {money(item['balance'])} AZN."
+        item["whatsapp_url"] = f"https://wa.me/{''.join(ch for ch in str(item.get('guest_phone') or '') if ch.isdigit())}?text={quote(text)}"
+    return {"debtors": due, "arrivals": arrivals, "departures": departures}
 
 
 def summary():
@@ -399,6 +493,16 @@ class Handler(SimpleHTTPRequestHandler):
     def send_error_json(self, message, status=400):
         self.send_json({"error": message}, status)
 
+    def send_text(self, body, content_type="text/plain; charset=utf-8", status=200, filename=None):
+        data = str(body).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        if filename:
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.end_headers()
+        self.wfile.write(data)
+
     def authenticated(self):
         header = self.headers.get("Authorization", "")
         bearer = header[7:] if header.startswith("Bearer ") else ""
@@ -449,6 +553,12 @@ class Handler(SimpleHTTPRequestHandler):
                 shutil.copy2(DB_PATH, target)
                 audit(self.current_user["username"], "backup.created", "backup", target.name)
                 return self.send_json({"file": str(target), "name": target.name})
+            if path == "/api/backups":
+                if not self.require_auth({"Admin"}):
+                    return
+                BACKUP_DIR.mkdir(exist_ok=True)
+                backups = [{"name": item.name, "size": item.stat().st_size} for item in sorted(BACKUP_DIR.glob("hotel50-*.db"), reverse=True)]
+                return self.send_json(backups)
             if path == "/api/users":
                 if not self.require_auth({"Admin"}):
                     return
@@ -465,10 +575,39 @@ class Handler(SimpleHTTPRequestHandler):
                 if not self.require_auth():
                     return
                 return self.send_json(room_list())
+            if path == "/api/hotels":
+                if not self.require_auth():
+                    return
+                return self.send_json(rows("SELECT * FROM hotels ORDER BY name"))
             if path == "/api/guests":
                 if not self.require_auth():
                     return
                 return self.send_json(rows("SELECT * FROM guests ORDER BY created_at DESC"))
+            if path == "/api/documents":
+                if not self.require_auth():
+                    return
+                return self.send_json(rows("""
+                    SELECT d.id, d.guest_id, d.title, d.file_name, d.content_type, d.created_at, g.full_name AS guest_name
+                    FROM guest_documents d
+                    JOIN guests g ON g.id = d.guest_id
+                    ORDER BY d.created_at DESC
+                """))
+            if path == "/api/debtors":
+                if not self.require_auth():
+                    return
+                return self.send_json(debtors())
+            if path == "/api/calendar":
+                if not self.require_auth():
+                    return
+                return self.send_json(calendar_items())
+            if path == "/api/reminders":
+                if not self.require_auth():
+                    return
+                return self.send_json(reminders())
+            if path == "/api/booking-requests":
+                if not self.require_auth():
+                    return
+                return self.send_json(rows("SELECT * FROM booking_requests ORDER BY created_at DESC"))
             if path == "/api/bookings":
                 if not self.require_auth():
                     return
@@ -488,15 +627,50 @@ class Handler(SimpleHTTPRequestHandler):
                 if not self.require_auth({"Admin", "Accounting"}):
                     return
                 return self.send_json(rows("SELECT * FROM expenses ORDER BY spent_at DESC, created_at DESC"))
-            if path == "/api/proposals":
+            if path == "/api/export/monthly":
+                if not self.require_auth({"Admin", "Accounting"}):
+                    return
+                output = io.StringIO()
+                writer = csv.writer(output)
+                writer.writerow(["type", "date", "name", "room_or_category", "amount", "paid", "balance", "note"])
+                for b in booking_select():
+                    writer.writerow(["booking", b["check_in"], b["guest_name"], b["room_number"], b["total_amount"] + b["late_fee"], b["paid_amount"], b["balance"], b["note"]])
+                for e in rows("SELECT * FROM expenses ORDER BY spent_at DESC"):
+                    writer.writerow(["expense", e["spent_at"], "", e["category"], e["amount"], "", "", e["note"]])
+                return self.send_text(output.getvalue(), "text/csv; charset=utf-8", filename="hotel50-monthly-report.csv")
+            receipt_match = path.strip("/").split("/")
+            if len(receipt_match) == 3 and receipt_match[:2] == ["api", "receipts"]:
+                if not self.require_auth({"Admin", "Accounting"}):
+                    return
+                payment = row(
+                    """
+                    SELECT p.*, g.full_name AS guest_name, r.number AS room_number, b.check_in, b.check_out
+                    FROM payments p
+                    JOIN bookings b ON b.id = p.booking_id
+                    JOIN guests g ON g.id = b.guest_id
+                    JOIN rooms r ON r.id = b.room_id
+                    WHERE p.id = ?
+                    """,
+                    (integer(receipt_match[2]),),
+                )
+                if not payment:
+                    return self.send_error_json("Qəbz tapılmadı", 404)
+                html = f"""<!doctype html><html><head><meta charset='utf-8'><title>Qəbz #{payment['id']}</title>
+                <style>body{{font-family:Arial;padding:32px}}.box{{border:1px solid #ddd;padding:20px;max-width:520px}}dt{{font-weight:bold}}dd{{margin:0 0 10px}}</style></head>
+                <body><div class='box'><h1>Hotel 50 qəbz</h1><dl>
+                <dt>Qəbz</dt><dd>#{payment['id']}</dd><dt>Qonaq</dt><dd>{payment['guest_name']}</dd>
+                <dt>Otaq</dt><dd>{payment['room_number']}</dd><dt>Tarix</dt><dd>{payment['paid_at']}</dd>
+                <dt>Məbləğ</dt><dd>{money(payment['amount'])} AZN</dd><dt>Metod</dt><dd>{payment['method']}</dd>
+                </dl><button onclick='window.print()'>Çap et</button></div></body></html>"""
+                return self.send_text(html, "text/html; charset=utf-8")
+            document_match = path.strip("/").split("/")
+            if len(document_match) == 3 and document_match[:2] == ["api", "documents"]:
                 if not self.require_auth():
                     return
-                return self.send_json(rows("""
-                    SELECT * FROM proposals
-                    ORDER BY
-                      CASE priority WHEN 'Yüksək' THEN 1 WHEN 'Orta' THEN 2 ELSE 3 END,
-                      id
-                """))
+                doc = row("SELECT * FROM guest_documents WHERE id = ?", (integer(document_match[2]),))
+                if not doc:
+                    return self.send_error_json("Sənəd tapılmadı", 404)
+                return self.send_text(doc["data"], "text/plain; charset=utf-8")
             return super().do_GET()
         except Exception as exc:
             return self.send_error_json(str(exc), 500)
@@ -533,6 +707,20 @@ class Handler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(body)
                 return
+            if path == "/api/public/booking-requests":
+                request_id = execute(
+                    "INSERT INTO booking_requests (full_name, phone, check_in, check_out, people_count, note) VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        str(data.get("full_name") or "").strip(),
+                        str(data.get("phone") or "").strip(),
+                        str(data.get("check_in") or ""),
+                        str(data.get("check_out") or ""),
+                        integer(data.get("people_count"), 1),
+                        str(data.get("note") or ""),
+                    ),
+                )
+                audit("public", "booking_request.created", "booking_request", request_id)
+                return self.send_json({"id": request_id}, 201)
             if not self.require_auth():
                 return
             if path == "/api/users":
@@ -560,7 +748,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if not self.require_auth({"Admin"}):
                     return
                 room_id = execute(
-                    "INSERT INTO rooms (number, floor, room_type, capacity, nightly_rate, note) VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO rooms (number, floor, room_type, capacity, nightly_rate, note, hotel_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (
                         str(data.get("number", "")).strip(),
                         integer(data.get("floor"), 1),
@@ -568,10 +756,20 @@ class Handler(SimpleHTTPRequestHandler):
                         integer(data.get("capacity"), 1),
                         money(data.get("nightly_rate")),
                         str(data.get("note") or ""),
+                        integer(data.get("hotel_id"), 1),
                     ),
                 )
                 audit(self.current_user["username"], "room.created", "room", room_id)
                 return self.send_json({"id": room_id}, 201)
+            if path == "/api/hotels":
+                if not self.require_auth({"Admin"}):
+                    return
+                hotel_id = execute(
+                    "INSERT INTO hotels (name, address) VALUES (?, ?)",
+                    (str(data.get("name") or "").strip(), str(data.get("address") or "")),
+                )
+                audit(self.current_user["username"], "hotel.created", "hotel", hotel_id)
+                return self.send_json({"id": hotel_id}, 201)
             if path == "/api/guests":
                 guest_id = execute(
                     "INSERT INTO guests (full_name, phone, document_no, note) VALUES (?, ?, ?, ?)",
@@ -585,6 +783,9 @@ class Handler(SimpleHTTPRequestHandler):
                 audit(self.current_user["username"], "guest.created", "guest", guest_id)
                 return self.send_json({"id": guest_id}, 201)
             if path == "/api/bookings":
+                ok, message = has_capacity(integer(data.get("room_id")), str(data.get("check_in") or ""), str(data.get("check_out") or ""), integer(data.get("people_count"), 1))
+                if not ok:
+                    return self.send_error_json(message, 400)
                 booking_id = execute(
                     """
                     INSERT INTO bookings (guest_id, room_id, check_in, check_out, status, people_count, total_amount, note)
@@ -632,30 +833,69 @@ class Handler(SimpleHTTPRequestHandler):
                 )
                 audit(self.current_user["username"], "expense.created", "expense", expense_id)
                 return self.send_json({"id": expense_id}, 201)
-            if path == "/api/proposals":
+            if path == "/api/restore":
                 if not self.require_auth({"Admin"}):
                     return
-                priority = str(data.get("priority") or "Orta")
-                status = str(data.get("status") or "Təklif")
-                if priority not in {"Yüksək", "Orta", "Aşağı"}:
-                    return self.send_error_json("Prioritet düzgün deyil", 400)
-                if status not in {"Təklif", "Seçildi", "İcrada", "Hazır", "Gözləyir"}:
-                    return self.send_error_json("Status düzgün deyil", 400)
-                proposal_id = execute(
-                    "INSERT INTO proposals (title, category, priority, status, description) VALUES (?, ?, ?, ?, ?)",
+                name = Path(str(data.get("name") or "")).name
+                source = BACKUP_DIR / name
+                if not source.exists() or not source.name.startswith("hotel50-"):
+                    return self.send_error_json("Backup tapılmadı", 404)
+                stamp = time.strftime("%Y%m%d-%H%M%S")
+                shutil.copy2(DB_PATH, BACKUP_DIR / f"hotel50-before-restore-{stamp}.db")
+                shutil.copy2(source, DB_PATH)
+                audit(self.current_user["username"], "backup.restored", "backup", name)
+                return self.send_json({"ok": True})
+            if path == "/api/backups/delete":
+                if not self.require_auth({"Admin"}):
+                    return
+                names = data.get("names")
+                if not isinstance(names, list):
+                    return self.send_error_json("Backup siyahısı düzgün deyil", 400)
+                deleted = []
+                for raw_name in names:
+                    name = Path(str(raw_name or "")).name
+                    target = BACKUP_DIR / name
+                    if not name.startswith("hotel50-") or target.parent != BACKUP_DIR or not target.exists():
+                        continue
+                    target.unlink()
+                    deleted.append(name)
+                    audit(self.current_user["username"], "backup.deleted", "backup", name)
+                return self.send_json({"deleted": deleted})
+            guest_doc_match = path.strip("/").split("/")
+            if len(guest_doc_match) == 4 and guest_doc_match[:2] == ["api", "guests"] and guest_doc_match[3] == "documents":
+                doc_id = execute(
+                    "INSERT INTO guest_documents (guest_id, title, file_name, content_type, data) VALUES (?, ?, ?, ?, ?)",
                     (
-                        str(data.get("title") or "").strip(),
-                        str(data.get("category") or "Funksiya").strip(),
-                        priority,
-                        status,
-                        str(data.get("description") or "").strip(),
+                        integer(guest_doc_match[2]),
+                        str(data.get("title") or "Sənəd").strip(),
+                        str(data.get("file_name") or "document.txt").strip(),
+                        str(data.get("content_type") or "text/plain"),
+                        str(data.get("data") or ""),
                     ),
                 )
-                audit(self.current_user["username"], "proposal.created", "proposal", proposal_id)
-                return self.send_json({"id": proposal_id}, 201)
+                audit(self.current_user["username"], "document.created", "document", doc_id)
+                return self.send_json({"id": doc_id}, 201)
             return self.send_error_json("Not found", 404)
         except sqlite3.IntegrityError as exc:
             return self.send_error_json(f"Məlumat düzgün deyil: {exc}", 400)
+        except Exception as exc:
+            return self.send_error_json(str(exc), 500)
+
+    def do_DELETE(self):
+        path = urlparse(self.path).path
+        try:
+            if not self.require_auth({"Admin"}):
+                return
+            parts = path.strip("/").split("/")
+            if len(parts) == 3 and parts[:2] == ["api", "backups"]:
+                name = Path(parts[2]).name
+                target = BACKUP_DIR / name
+                if not name.startswith("hotel50-") or target.parent != BACKUP_DIR or not target.exists():
+                    return self.send_error_json("Backup tapılmadı", 404)
+                target.unlink()
+                audit(self.current_user["username"], "backup.deleted", "backup", name)
+                return self.send_json({"ok": True, "deleted": name})
+            return self.send_error_json("Not found", 404)
         except Exception as exc:
             return self.send_error_json(str(exc), 500)
 
@@ -676,18 +916,31 @@ class Handler(SimpleHTTPRequestHandler):
                 )
                 audit(self.current_user["username"], f"booking.{status}", "booking", parts[2])
                 return self.send_json({"ok": True})
-            if len(parts) == 4 and parts[:2] == ["api", "proposals"] and parts[3] == "status":
-                if not self.require_auth({"Admin"}):
+            if len(parts) == 4 and parts[:2] == ["api", "rooms"] and parts[3] == "cleaning":
+                if not self.require_auth({"Admin", "Reception"}):
                     return
                 data = json_body(self)
+                status = str(data.get("cleaning_status") or "")
+                if status not in {"Təmiz", "Çirkli", "Təmizlikdə", "Təmir lazımdır"}:
+                    return self.send_error_json("Təmizlik statusu düzgün deyil", 400)
+                execute("UPDATE rooms SET cleaning_status = ? WHERE id = ?", (status, integer(parts[2])))
+                audit(self.current_user["username"], f"room.cleaning.{status}", "room", parts[2])
+                return self.send_json({"ok": True})
+            if len(parts) == 4 and parts[:2] == ["api", "booking-requests"] and parts[3] == "status":
+                data = json_body(self)
                 status = str(data.get("status") or "")
-                if status not in {"Təklif", "Seçildi", "İcrada", "Hazır", "Gözləyir"}:
+                if status not in {"Yeni", "Baxılır", "Təsdiq", "İmtina"}:
                     return self.send_error_json("Status düzgün deyil", 400)
-                execute(
-                    "UPDATE proposals SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (status, integer(parts[2])),
-                )
-                audit(self.current_user["username"], f"proposal.{status}", "proposal", parts[2])
+                execute("UPDATE booking_requests SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (status, integer(parts[2])))
+                audit(self.current_user["username"], f"booking_request.{status}", "booking_request", parts[2])
+                return self.send_json({"ok": True})
+            if len(parts) == 4 and parts[:2] == ["api", "bookings"] and parts[3] == "late-fee":
+                if not self.require_auth({"Admin", "Accounting"}):
+                    return
+                data = json_body(self)
+                amount = money(data.get("late_fee"))
+                execute("UPDATE bookings SET late_fee = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (amount, integer(parts[2])))
+                audit(self.current_user["username"], "booking.late_fee", "booking", parts[2], amount)
                 return self.send_json({"ok": True})
             return self.send_error_json("Not found", 404)
         except Exception as exc:

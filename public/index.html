@@ -37,11 +37,16 @@
       <section class="workspace">
         <nav class="tabs" aria-label="Bölmələr">
           <button class="tab active" data-tab="bookings">Bronlar</button>
+          <button class="tab" data-tab="calendar">Təqvim</button>
           <button class="tab" data-tab="rooms">Otaqlar</button>
           <button class="tab" data-tab="guests">Qonaqlar</button>
+          <button class="tab" data-tab="debtors">Borclular</button>
           <button class="tab" data-tab="payments">Ödənişlər</button>
           <button class="tab accounting-only" data-tab="expenses">Xərclər</button>
-          <button class="tab" data-tab="proposals">Təkliflər</button>
+          <button class="tab" data-tab="requests">Online sorğular</button>
+          <button class="tab" data-tab="reminders">Xatırlatmalar</button>
+          <button class="tab accounting-only" data-tab="reports">Hesabat</button>
+          <button class="tab admin-only" data-tab="backups">Backup</button>
           <button class="tab admin-only" data-tab="users">İstifadəçilər</button>
           <button class="tab admin-only" data-tab="audit">Audit</button>
         </nav>
@@ -66,7 +71,13 @@
 
         <section class="panel" id="rooms">
           <div class="panel-head"><h2>Otaqlar</h2></div>
+          <form id="hotelForm" class="form-grid admin-only">
+            <label>Filial adı<input name="name" required placeholder="Hotel 50 - Şuşa" /></label>
+            <label>Ünvan<input name="address" /></label>
+            <button type="submit">Filial əlavə et</button>
+          </form>
           <form id="roomForm" class="form-grid">
+            <label>Filial<select name="hotel_id"></select></label>
             <label>Nömrə<input name="number" required placeholder="101" /></label>
             <label>Mərtəbə<input name="floor" type="number" min="1" value="1" required /></label>
             <label>Tip<input name="room_type" value="Standard" required /></label>
@@ -78,6 +89,11 @@
           <div class="table-wrap"><table id="roomTable"></table></div>
         </section>
 
+        <section class="panel" id="calendar">
+          <div class="panel-head"><h2>Otaq təqvimi</h2></div>
+          <div class="table-wrap"><table id="calendarTable"></table></div>
+        </section>
+
         <section class="panel" id="guests">
           <div class="panel-head"><h2>Qonaqlar</h2></div>
           <form id="guestForm" class="form-grid">
@@ -87,7 +103,20 @@
             <label>Qeyd<input name="note" /></label>
             <button type="submit">Qonaq əlavə et</button>
           </form>
+          <form id="documentForm" class="form-grid">
+            <label>Qonaq<select name="guest_id" required></select></label>
+            <label>Sənəd adı<input name="title" required placeholder="Şəxsiyyət vəsiqəsi" /></label>
+            <label>Fayl adı<input name="file_name" value="document.txt" required /></label>
+            <label class="wide">Mətn/Base64<input name="data" placeholder="Sənəd məzmunu və ya base64" required /></label>
+            <button type="submit">Sənəd əlavə et</button>
+          </form>
           <div class="table-wrap"><table id="guestTable"></table></div>
+          <div class="table-wrap mt"><table id="documentTable"></table></div>
+        </section>
+
+        <section class="panel" id="debtors">
+          <div class="panel-head"><h2>Borclular siyahısı</h2></div>
+          <div class="table-wrap"><table id="debtorTable"></table></div>
         </section>
 
         <section class="panel" id="payments">
@@ -106,7 +135,7 @@
         <section class="panel accounting-only" id="expenses">
           <div class="panel-head"><h2>Xərclər</h2></div>
           <form id="expenseForm" class="form-grid">
-            <label>Kateqoriya<select name="category"><option>Maaş</option><option>Kommunal</option><option>Təmir</option><option>Təmizlik</option><option>Ərzaq</option><option>Digər</option></select></label>
+            <label>Kateqoriya<select name="category"><option>Kommunal</option><option>Təmir</option><option>Təmizlik</option><option>Ərzaq</option><option>Digər</option></select></label>
             <label>Məbləğ<input name="amount" type="number" min="0" step="0.01" required /></label>
             <label>Tarix<input name="spent_at" type="date" required /></label>
             <label>Qeyd<input name="note" /></label>
@@ -115,17 +144,35 @@
           <div class="table-wrap"><table id="expenseTable"></table></div>
         </section>
 
-        <section class="panel" id="proposals">
-          <div class="panel-head"><h2>Təkliflər siyahısı</h2></div>
-          <form id="proposalForm" class="form-grid admin-only">
-            <label>Başlıq<input name="title" required /></label>
-            <label>Kateqoriya<input name="category" value="Funksiya" required /></label>
-            <label>Prioritet<select name="priority"><option>Yüksək</option><option>Orta</option><option>Aşağı</option></select></label>
-            <label>Status<select name="status"><option>Təklif</option><option>Seçildi</option><option>İcrada</option><option>Hazır</option><option>Gözləyir</option></select></label>
-            <label class="wide">Təsvir<input name="description" /></label>
-            <button type="submit">Təklif əlavə et</button>
+        <section class="panel" id="requests">
+          <div class="panel-head"><h2>Online rezervasiya sorğuları</h2></div>
+          <form id="publicRequestForm" class="form-grid">
+            <label>Ad soyad<input name="full_name" required /></label>
+            <label>Telefon<input name="phone" /></label>
+            <label>Giriş<input name="check_in" type="date" /></label>
+            <label>Çıxış<input name="check_out" type="date" /></label>
+            <label>Nəfər<input name="people_count" type="number" min="1" value="1" /></label>
+            <label>Qeyd<input name="note" /></label>
+            <button type="submit">Sorğu yarat</button>
           </form>
-          <div class="table-wrap"><table id="proposalTable"></table></div>
+          <div class="table-wrap"><table id="requestTable"></table></div>
+        </section>
+
+        <section class="panel" id="reminders">
+          <div class="panel-head"><h2>SMS/WhatsApp xatırlatmalar</h2></div>
+          <div class="table-wrap"><table id="reminderTable"></table></div>
+        </section>
+
+        <section class="panel accounting-only" id="reports">
+          <div class="panel-head"><h2>Hesabat və export</h2></div>
+          <button id="exportBtn" type="button">Aylıq CSV export</button>
+        </section>
+
+        <section class="panel admin-only" id="backups">
+          <div class="panel-head"><h2>Backup restore</h2></div>
+          <button id="createBackupBtn" type="button">Backup yarat</button>
+          <button id="deleteSelectedBackupsBtn" type="button">Seçilənləri sil</button>
+          <div class="table-wrap mt"><table id="backupTable"></table></div>
         </section>
 
         <section class="panel admin-only" id="users">

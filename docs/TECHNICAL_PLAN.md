@@ -16,13 +16,13 @@ Birinci mərhələdə resepsion işləri, otaq doluluğu, bronlar, qonaq qeydiyy
 - Bronlar: qonaq, otaq, giriş tarixi, çıxış tarixi, status.
 - Check-in / check-out: bron statusunun dəyişməsi və otaq doluluğunun yenilənməsi.
 - Ödənişlər: bron üzrə məbləğ, metod, tarix, qeyd.
-- Xərclər: maaş, kommunal, təmir, təmizlik və digər xərclər.
+- Xərclər: kommunal, təmir, təmizlik, ərzaq və digər xərclər.
 - Hesabat: aktiv qalma, ödənilən məbləğ, qalıq borc.
-- Təkliflər siyahısı: növbəti işlərin seçilməsi və status izləmə.
+- Otaq təqvimi, borclular, sənədlər, qəbz, online sorğu və backup restore.
 
 ## Sonrakı mərhələlər
 - Login və istifadəçi rolları.
-- Xərc modulu: maaş, kommunal, təmir, təmizlik.
+- Xərc modulu: kommunal, təmir, təmizlik və digər xərclər.
 - Təmizlik və texniki servis tapşırıqları.
 - Müştəri müqaviləsi və qəbz PDF çıxarışı.
 - Excel/CSV export.
@@ -43,7 +43,9 @@ Birinci mərhələdə resepsion işləri, otaq doluluğu, bronlar, qonaq qeydiyy
 - expenses: hotel xərcləri.
 - users: sistem istifadəçiləri və rollar.
 - audit_logs: əsas əməliyyatların izi.
-- proposals: gələcək funksiya təklifləri və seçilmiş işlər.
+- guest_documents: qonaq sənədləri.
+- booking_requests: online rezervasiya sorğuları.
+- hotels: filial/obyekt siyahısı.
 
 ## Status qaydaları
 - booking status:
@@ -73,9 +75,22 @@ Birinci mərhələdə resepsion işləri, otaq doluluğu, bronlar, qonaq qeydiyy
 - GET /api/users
 - POST /api/users
 - GET /api/audit
-- GET /api/proposals
-- POST /api/proposals
-- PATCH /api/proposals/:id/status
+- GET /api/calendar
+- GET /api/debtors
+- GET /api/reminders
+- GET /api/export/monthly
+- GET /api/receipts/:id
+- GET /api/documents
+- POST /api/guests/:id/documents
+- GET /api/booking-requests
+- POST /api/public/booking-requests
+- PATCH /api/booking-requests/:id/status
+- GET /api/hotels
+- POST /api/hotels
+- GET /api/backups
+- DELETE /api/backups/:name
+- POST /api/backups/delete
+- POST /api/restore
 - GET /api/backup
 
 ## İlk iş planı

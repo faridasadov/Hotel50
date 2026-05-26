@@ -23,7 +23,10 @@ http://localhost:8020
 - Dashboard.
 - Otaq, qonaq, bron və ödəniş CRUD başlanğıcı.
 - Xərc modulu və aylıq gəlir/xərc/net göstəriciləri.
-- Təkliflər siyahısı: bundan sonrakı işləri seçmək və statusunu izləmək.
+- Otaq təqvimi, borclular siyahısı və WhatsApp xatırlatma linkləri.
+- Qonaq sənədləri, PDF/print qəbz və aylıq CSV export.
+- Online rezervasiya sorğuları, filial dəstəyi və backup restore.
+- Otaq təmizlik statusu və gec çıxış əlavə ödənişi.
 - Check-in, check-out, ləğv statusları.
 - Backup düyməsi və `/api/backup` endpoint-i.
 - SQLite database: `hotel50.db`.
