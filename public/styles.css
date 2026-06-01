@@ -6,33 +6,33 @@
 
 :root {
   /* Surfaces */
-  --bg:        #F4EEE3;
-  --panel:     #FFFDF8;
-  --panel-2:   #FBF6EC;
+  --bg:        #EEF5F1;   /* yüngül çay yaşılı canvas */
+  --panel:     #FFFFFF;   /* ağ panel */
+  --panel-2:   #F4FAF7;   /* çox açıq yaşıl panel */
 
   /* Ink */
-  --ink:       #241F18;
-  --muted:     #8C8273;
-  --ink-soft:  #6B6256;
+  --ink:       #161310;
+  --muted:     #5E7068;
+  --ink-soft:  #4A5A52;
 
   /* Lines */
-  --line:      #E6DCC9;
+  --line:      #D0E4DA;
 
-  /* Brand (deep pine green) */
-  --brand:     #123C33;
-  --brand-2:   #1B5247;
-  --brand-ink: #F4EEE3;
+  /* Brand (faridasadov qızılı) */
+  --brand:     #BE9856;
+  --brand-2:   #A07D41;
+  --brand-ink: #FFFFF8;
 
-  /* Accent (brass / gold) */
-  --accent:      #B0894F;
-  --accent-2:    #9A743C;
-  --accent-soft: #EFE2C9;
+  /* Accent (eyni qızılı) */
+  --accent:      #BE9856;
+  --accent-2:    #A07D41;
+  --accent-soft: #F5EDD8;
 
   /* Semantics */
-  --ok:         #3E6B4C;   --ok-bg:      #E7F0E6;
-  --warn:       #9A6B2F;   --warn-bg:    #F6EBD6;
-  --danger:     #9B4636;   --danger-bg:  #F3E2DC;
-  --neutral:    #6B6256;   --neutral-bg: #EFE9DC;
+  --ok:         #027a48;   --ok-bg:      #ecfdf3;
+  --warn:       #b45309;   --warn-bg:    #fffaeb;
+  --danger:     #b42318;   --danger-bg:  #fef3f2;
+  --neutral:    #4A5A52;   --neutral-bg: #E8F0EC;
 
   /* Typography */
   --serif: 'Marcellus', 'Cormorant Garamond', Georgia, serif;
@@ -63,7 +63,7 @@ body {
   place-items: center;
   padding: 18px;
   background:
-    linear-gradient(160deg, rgba(13,38,32,.72), rgba(20,24,28,.62)),
+    linear-gradient(160deg, rgba(6,42,32,.75), rgba(16,24,20,.65)),
     url("https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Shusha_general_view.jpg/1280px-Shusha_general_view.jpg");
   background-position: center;
   background-size: cover;
@@ -75,8 +75,8 @@ body {
   gap: 15px;
   padding: 40px 36px 30px;
   border-radius: 4px;
-  background: rgba(252,249,243,.96);
-  border: 1px solid rgba(176,137,79,.35);
+  background: rgba(255,255,255,.96);
+  border: 1px solid rgba(190,152,86,.35);
   box-shadow: var(--shadow-modal);
   backdrop-filter: blur(8px);
 }
@@ -308,7 +308,7 @@ main { padding: 30px 34px 48px; max-width: 1280px; margin: 0 auto; }
 .search-input:focus {
   outline: 0;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(176,137,79,.16);
+  box-shadow: 0 0 0 3px rgba(190,152,86,.18);
 }
 
 .filter-select {
@@ -363,7 +363,7 @@ input::placeholder { color: #B6AC9B; }
 input:focus, select:focus, textarea:focus {
   outline: 0;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(176,137,79,.16);
+  box-shadow: 0 0 0 3px rgba(190,152,86,.18);
 }
 textarea { resize: vertical; min-height: 60px; }
 
