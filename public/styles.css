@@ -696,25 +696,22 @@ td strong { font-weight: 600; }
 .date-sep { color: var(--muted); font-size: 13px; }
 .expense-total-row td { background: var(--ok-bg) !important; }
 
-/* ─── faridasadov brand logo ─────────────────────── */
-.fa-logo {
-  --fa-gold: #BE9856;
-  --fa-fg: #F6F1E8;
-  display: inline-flex;
-  align-items: center;
-  gap: .26em;
-  color: var(--fa-fg);
+/* ─── faridasadov credit ─────────────────────────── */
+.fa-credit {
+  text-align: center;
+  padding: 8px 0 18px;
+  margin: 0;
+}
+.fa-credit a {
+  font-size: 11px;
+  color: var(--muted);
+  opacity: .4;
   text-decoration: none;
-  font-size: 18px;
-  line-height: 1;
-  -webkit-font-smoothing: antialiased;
-  opacity: .65;
+  letter-spacing: .06em;
+  font-family: var(--sans);
   transition: opacity .2s;
 }
-.fa-logo:hover { opacity: 1; }
-.fa-logo__mark { width: 1.18em; height: 1.16em; flex: none; }
-.fa-logo__divider { width: 1px; height: .92em; background: var(--fa-gold); opacity: .55; }
-.fa-logo__word { font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 1em; letter-spacing: -.01em; }
+.fa-credit a:hover { opacity: .8; }
 
 /* ─── Responsive ─────────────────────────────────── */
 @media (max-width: 1100px) {
