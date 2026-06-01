@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Hotel 50</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&display=swap" />
+    <style>
+      .fa-logo{--fa-gold:#BE9856;--fa-fg:#F6F1E8;display:inline-flex;align-items:center;gap:.26em;color:var(--fa-fg);text-decoration:none;font-size:18px;line-height:1;-webkit-font-smoothing:antialiased;opacity:.65;transition:opacity .2s}
+      .fa-logo:hover{opacity:1}
+      .fa-logo__mark{width:1.18em;height:1.16em;flex:none}
+      .fa-logo__divider{width:1px;height:.92em;background:var(--fa-gold);opacity:.55}
+      .fa-logo__word{font-family:'Instrument Serif',Georgia,serif;font-weight:400;font-size:1em;letter-spacing:-.01em}
+    </style>
   </head>
   <body>
 
@@ -27,6 +35,15 @@
         <h1>Hotel 50</h1>
       </div>
       <div class="topbar-actions">
+        <a class="fa-logo" href="https://faridasadov.github.io" aria-label="faridasadov" target="_blank" rel="noopener" title="faridasadov">
+          <svg class="fa-logo__mark" viewBox="0 0 150 148" fill="none" aria-hidden="true">
+            <path d="M75 8 L131 41 V107 L75 140 L19 107 V41 Z" stroke="#BE9856" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M88 56 H70 C62 56 57 61 57 70 V104" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M45 79 H77" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+          </svg>
+          <span class="fa-logo__divider" aria-hidden="true"></span>
+          <span class="fa-logo__word">faridasadov</span>
+        </a>
         <span class="user-chip" id="userChip"></span>
         <button id="backupBtn"  class="icon-button" title="Backup">⇩</button>
         <button id="refreshBtn" class="icon-button" title="Yenilə">↻</button>
@@ -47,6 +64,7 @@
           <button class="tab"                 data-tab="guests">Qonaqlar</button>
           <button class="tab"                 data-tab="debtors">Borclular</button>
           <button class="tab"                 data-tab="payments">Ödənişlər</button>
+          <button class="tab"                 data-tab="room-orders">Otaq sifarişi</button>
           <button class="tab accounting-only" data-tab="expenses">Xərclər</button>
           <button class="tab"                 data-tab="requests">Sorğular</button>
           <button class="tab"                 data-tab="reminders">Xatırlatma</button>
@@ -104,13 +122,7 @@
         <!-- ── Rooms ─────────────────────────────────── -->
         <section class="panel" id="rooms">
           <div class="panel-head"><h2>Otaqlar</h2></div>
-          <form id="hotelForm" class="form-grid admin-only">
-            <label>Filial adı<input name="name" required placeholder="Hotel 50 - Şuşa" /></label>
-            <label>Ünvan<input name="address" /></label>
-            <button type="submit">+ Filial əlavə et</button>
-          </form>
           <form id="roomForm" class="form-grid">
-            <label>Filial<select name="hotel_id"></select></label>
             <label>Nömrə<input name="number" required placeholder="101" /></label>
             <label>Mərtəbə<input name="floor" type="number" min="1" value="1" required /></label>
             <label>Tip<input name="room_type" value="Standard" required /></label>
@@ -168,19 +180,59 @@
           <div class="table-wrap"><table id="paymentTable"></table></div>
         </section>
 
+        <!-- ── Room Orders ────────────────────────────── -->
+        <section class="panel" id="room-orders">
+          <div class="panel-head"><h2>Otaq sifarişləri</h2></div>
+          <form id="roomOrderForm" class="form-grid">
+            <label>Otaq<select name="room_id" required></select></label>
+            <label>Aktiv bron<select name="booking_id"><option value="">– Opsional –</option></select></label>
+            <label>Kateqoriya<select name="category">
+              <option>Yemək</option>
+              <option>İçki</option>
+              <option>Gigiyena məhsulu</option>
+              <option>Əlavə inventar</option>
+              <option>Müxtəlif</option>
+            </select></label>
+            <label>Təsvir<input name="description" required placeholder="Sifariş məzmunu" /></label>
+            <label>Məbləğ (AZN)<input name="amount" type="number" min="0" step="0.01" value="0" /></label>
+            <label>Qeyd<input name="note" placeholder="Opsional" /></label>
+            <button type="submit">+ Sifariş əlavə et</button>
+          </form>
+          <div class="table-wrap"><table id="roomOrderTable"></table></div>
+        </section>
+
         <!-- ── Expenses ───────────────────────────────── -->
         <section class="panel accounting-only" id="expenses">
           <div class="panel-head"><h2>Xərclər</h2></div>
           <form id="expenseForm" class="form-grid">
-            <label>Kateqoriya<select name="category">
-              <option>Kommunal</option><option>Təmir</option><option>Təmizlik</option>
-              <option>Ərzaq</option><option>Əmək haqqı</option><option>Digər</option>
-            </select></label>
+            <label>Kateqoriya
+              <input name="category" list="expenseCategoryList" required placeholder="Kateqoriya seçin və ya yazın" />
+              <datalist id="expenseCategoryList">
+                <option>Kommunal</option>
+                <option>Təmir</option>
+                <option>Təmizlik</option>
+                <option>Ərzaq</option>
+                <option>Əmək haqqı</option>
+                <option>Reklam</option>
+                <option>Avadanlıq</option>
+                <option>Nəqliyyat</option>
+                <option>Digər</option>
+              </datalist>
+            </label>
             <label>Məbləğ<input name="amount" type="number" min="0" step="0.01" required /></label>
             <label>Tarix<input name="spent_at" type="date" required /></label>
             <label>Qeyd<input name="note" /></label>
             <button type="submit">+ Xərc əlavə et</button>
           </form>
+          <div class="expense-filters">
+            <select id="expenseCatFilter"><option value="">Bütün kateqoriyalar</option></select>
+            <input type="date" id="expenseFromFilter" title="Başlanğıc tarix" />
+            <span class="date-sep">–</span>
+            <input type="date" id="expenseToFilter" title="Son tarix" />
+            <button id="expenseFilterBtn">Filtrə et</button>
+            <button id="expenseFilterClearBtn">Sıfırla</button>
+            <span id="expenseTotalBadge" class="expense-total-badge"></span>
+          </div>
           <div class="table-wrap"><table id="expenseTable"></table></div>
         </section>
 
