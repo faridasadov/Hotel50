@@ -5,34 +5,34 @@
    ═══════════════════════════════════════════════════════════ */
 
 :root {
-  /* Surfaces */
-  --bg:        #EEF5F1;   /* yüngül çay yaşılı canvas */
-  --panel:     #FFFFFF;   /* ağ panel */
-  --panel-2:   #F4FAF7;   /* çox açıq yaşıl panel */
+  /* Surfaces — ağ panel, açıq yaşıl canvas */
+  --bg:        #EDF5F0;
+  --panel:     #FFFFFF;
+  --panel-2:   #F2FAF6;
 
   /* Ink */
-  --ink:       #161310;
-  --muted:     #5E7068;
-  --ink-soft:  #4A5A52;
+  --ink:       #141F18;
+  --muted:     #526B5C;
+  --ink-soft:  #3D5446;
 
   /* Lines */
-  --line:      #D0E4DA;
+  --line:      #C8E0D4;
 
-  /* Brand (faridasadov qızılı) */
-  --brand:     #BE9856;
-  --brand-2:   #A07D41;
-  --brand-ink: #FFFFF8;
+  /* Brand — dərin pine yaşıl (düymələr, aktiv tablar) */
+  --brand:     #123C33;
+  --brand-2:   #1B5247;
+  --brand-ink: #F6F1E8;
 
-  /* Accent (eyni qızılı) */
+  /* Aksent — faridasadov qızılı (tab underline, stat rəqəmləri, eyebrow, stat şerit) */
   --accent:      #BE9856;
   --accent-2:    #A07D41;
   --accent-soft: #F5EDD8;
 
   /* Semantics */
-  --ok:         #027a48;   --ok-bg:      #ecfdf3;
-  --warn:       #b45309;   --warn-bg:    #fffaeb;
-  --danger:     #b42318;   --danger-bg:  #fef3f2;
-  --neutral:    #4A5A52;   --neutral-bg: #E8F0EC;
+  --ok:         #3E6B4C;   --ok-bg:      #E7F0E6;
+  --warn:       #9A6B2F;   --warn-bg:    #F6EBD6;
+  --danger:     #9B4636;   --danger-bg:  #F3E2DC;
+  --neutral:    #4A5A52;   --neutral-bg: #E4EFEA;
 
   /* Typography */
   --serif: 'Marcellus', 'Cormorant Garamond', Georgia, serif;
@@ -75,8 +75,8 @@ body {
   gap: 15px;
   padding: 40px 36px 30px;
   border-radius: 4px;
-  background: rgba(255,255,255,.96);
-  border: 1px solid rgba(190,152,86,.35);
+  background: rgba(255,255,255,.97);
+  border: 1px solid rgba(190,152,86,.40);
   box-shadow: var(--shadow-modal);
   backdrop-filter: blur(8px);
 }
