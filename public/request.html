@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="az">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hotel 50 Rezervasiya Sorğusu</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      body {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background:
+          linear-gradient(160deg, rgba(6,42,32,.82), rgba(16,24,20,.68)),
+          url("https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Shusha_general_view.jpg/1280px-Shusha_general_view.jpg");
+        background-position: center;
+        background-size: cover;
+      }
+      .public-shell {
+        width: min(840px, 100%);
+        background: rgba(255,255,255,.96);
+        border: 1px solid rgba(190,152,86,.34);
+        border-radius: 6px;
+        box-shadow: var(--shadow-modal);
+        overflow: hidden;
+      }
+      .public-head {
+        padding: 28px 28px 8px;
+      }
+      .public-head h1 {
+        font-family: var(--serif);
+        font-size: 38px;
+        font-weight: 400;
+      }
+      .public-head p {
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 15px;
+      }
+      .public-form {
+        margin: 0;
+        border: 0;
+        border-top: 1px solid var(--line);
+        border-radius: 0;
+      }
+      .public-status {
+        min-height: 20px;
+        padding: 0 28px 28px;
+        color: var(--brand);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="public-shell">
+      <div class="public-head">
+        <p class="eyebrow">Hotel 50</p>
+        <h1>Rezervasiya sorğusu</h1>
+        <p>Tarixləri və əlaqə məlumatını göndərin. Sorğu resepsion panelinə düşəcək.</p>
+      </div>
+
+      <form id="publicRequestForm" class="form-grid public-form">
+        <label>Ad soyad<input name="full_name" required /></label>
+        <label>Telefon<input name="phone" /></label>
+        <label>Giriş<input name="check_in" type="date" /></label>
+        <label>Çıxış<input name="check_out" type="date" /></label>
+        <label>Nəfər<input name="people_count" type="number" min="1" value="1" /></label>
+        <label class="wide">Qeyd<input name="note" /></label>
+        <button type="submit">Sorğunu göndər</button>
+      </form>
+
+      <div id="publicStatus" class="public-status"></div>
+    </main>
+
+    <script>
+      const form = document.getElementById("publicRequestForm");
+      const statusEl = document.getElementById("publicStatus");
+      const today = new Date().toISOString().slice(0, 10);
+      form.querySelector('[name="check_in"]').value = today;
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        statusEl.textContent = "";
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        try {
+          const payload = Object.fromEntries(new FormData(form).entries());
+          const res = await fetch("/api/public/booking-requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Server xətası");
+          form.reset();
+          form.querySelector('[name="check_in"]').value = today;
+          form.querySelector('[name="people_count"]').value = "1";
+          statusEl.textContent = "Sorğu göndərildi. Sizinlə əlaqə saxlanılacaq.";
+        } catch (error) {
+          statusEl.textContent = error.message;
+        } finally {
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -45,7 +45,6 @@ Birinci mərhələdə resepsion işləri, otaq doluluğu, bronlar, qonaq qeydiyy
 - audit_logs: əsas əməliyyatların izi.
 - guest_documents: qonaq sənədləri.
 - booking_requests: online rezervasiya sorğuları.
-- hotels: filial/obyekt siyahısı.
 
 ## Status qaydaları
 - booking status:
@@ -85,8 +84,6 @@ Birinci mərhələdə resepsion işləri, otaq doluluğu, bronlar, qonaq qeydiyy
 - GET /api/booking-requests
 - POST /api/public/booking-requests
 - PATCH /api/booking-requests/:id/status
-- GET /api/hotels
-- POST /api/hotels
 - GET /api/backups
 - DELETE /api/backups/:name
 - POST /api/backups/delete

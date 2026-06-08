@@ -17,13 +17,13 @@ const state = {
   user: null,
   summary: {},
   rooms: [],
-  hotels: [],
   guests: [],
   documents: [],
   bookings: [],
   calendar: { rooms: [], bookings: [] },
   debtors: [],
   payments: [],
+  roomOrders: [],
   expenses: [],
   requests: [],
   reminders: { debtors: [], arrivals: [], departures: [] },
@@ -122,6 +122,8 @@ function isOps()        { return ["Admin", "Reception"].includes(state.user?.rol
 function applyPermissions() {
   document.querySelector("#userChip").textContent =
     state.user ? `${state.user.full_name} · ${state.user.role}` : "";
+  document.querySelectorAll(".ops-only").forEach((el) =>
+    el.classList.toggle("hidden", !isOps()));
   document.querySelectorAll(".admin-only").forEach((el) =>
     el.classList.toggle("hidden", !isAdmin()));
   document.querySelectorAll(".accounting-only").forEach((el) =>
@@ -131,6 +133,11 @@ function applyPermissions() {
   if (pf) pf.classList.toggle("hidden", !isAccounting());
   const ef = document.querySelector("#expenseForm");
   if (ef) ef.classList.toggle("hidden", !isAccounting());
+  const activeTab = document.querySelector(".tab.active");
+  if (activeTab?.classList.contains("hidden")) {
+    const nextTab = [...document.querySelectorAll(".tab")].find((el) => !el.classList.contains("hidden"));
+    if (nextTab) nextTab.click();
+  }
 }
 
 // ─── Option lists ─────────────────────────────────────────────
@@ -141,17 +148,25 @@ function optionLists() {
   const roomOpts = state.rooms
     .map((r) => `<option value="${r.id}">${escapeHtml(r.number)} (boş: ${r.free_beds}/${r.capacity}) – ${fmt(r.nightly_rate)}/gecə</option>`)
     .join("");
-  const hotelOpts = state.hotels
-    .map((h) => `<option value="${h.id}">${escapeHtml(h.name)}</option>`)
-    .join("");
 
   document.querySelector('[name="guest_id"]').innerHTML = guestOpts;
   document.querySelector('#documentForm [name="guest_id"]').innerHTML = guestOpts;
   document.querySelector('[name="room_id"]').innerHTML = roomOpts;
-  document.querySelector('#roomForm [name="hotel_id"]').innerHTML = hotelOpts;
   document.querySelector('[name="booking_id"]').innerHTML = state.bookings
     .map((b) => `<option value="${b.id}">#${b.id} ${escapeHtml(b.guest_name)} / ${escapeHtml(b.room_number)} / borc: ${fmt(b.balance)}</option>`)
     .join("");
+
+  // Room orders form
+  const roRoomEl = document.querySelector('#roomOrderForm [name="room_id"]');
+  if (roRoomEl) roRoomEl.innerHTML = state.rooms
+    .map((r) => `<option value="${r.id}">${escapeHtml(r.number)} (${escapeHtml(r.room_type)})</option>`)
+    .join("");
+  const roBookingEl = document.querySelector('#roomOrderForm [name="booking_id"]');
+  if (roBookingEl) roBookingEl.innerHTML =
+    `<option value="">– Opsional –</option>` +
+    state.bookings.filter((b) => b.status === "CheckedIn")
+      .map((b) => `<option value="${b.id}">#${b.id} ${escapeHtml(b.guest_name)} / ${escapeHtml(b.room_number)}</option>`)
+      .join("");
 }
 
 // ─── Stats ────────────────────────────────────────────────────
@@ -184,10 +199,9 @@ function buildTable(targetSelector, headers, rowsHTML) {
 function renderRooms() {
   buildTable(
     "#roomTable",
-    ["Filial", "Otaq", "M-bə", "Tip", "Tutum", "Dolu", "Boş", "Təmizlik", "Qiymət/gecə", "Əməliyyat"],
+    ["Otaq", "M-bə", "Tip", "Tutum", "Dolu", "Boş", "Təmizlik", "Qiymət/gecə", "Əməliyyat"],
     state.rooms.map((r) => `
       <tr>
-        <td>${escapeHtml(r.hotel_name || "–")}</td>
         <td><strong>${escapeHtml(r.number)}</strong></td>
         <td>${r.floor}</td>
         <td>${escapeHtml(r.room_type)}</td>
@@ -215,7 +229,6 @@ function renderCalendar() {
   const from = document.getElementById("calFrom").value || today();
   const toVal = document.getElementById("calTo").value || dateOffset(14);
 
-  // Build day array
   const days = [];
   let d = new Date(from);
   const endD = new Date(toVal);
@@ -227,7 +240,6 @@ function renderCalendar() {
 
   const todayStr = today();
 
-  // Build colorMap: roomId → date → booking
   const colorMap = {};
   bookings.forEach((b) => {
     if (!colorMap[b.room_id]) colorMap[b.room_id] = {};
@@ -366,24 +378,107 @@ function renderPayments() {
   );
 }
 
-// ─── Expenses ─────────────────────────────────────────────────
-function renderExpenses() {
+// ─── Room Orders ──────────────────────────────────────────────
+const ORDER_STATUS_CLASS = {
+  "Yeni":        "Reserved",
+  "Hazırlanır":  "CheckedIn",
+  "Çatdırıldı":  "CheckedOut",
+  "Ləğv edildi": "Cancelled",
+};
+
+function renderRoomOrders() {
   buildTable(
-    "#expenseTable",
-    ["Tarix", "Kateqoriya", "Məbləğ", "Qeyd", "Əməliyyat"],
-    state.expenses.map((e) => `
+    "#roomOrderTable",
+    ["Tarix", "Otaq", "Qonaq", "Kateqoriya", "Təsvir", "Məbləğ", "Status", "Əməliyyat"],
+    state.roomOrders.map((o) => `
       <tr>
-        <td>${e.spent_at}</td>
-        <td><strong>${escapeHtml(e.category)}</strong></td>
-        <td>${fmt(e.amount)}</td>
-        <td>${escapeHtml(e.note || "–")}</td>
+        <td>${o.created_at.slice(0, 16).replace("T", " ")}</td>
+        <td><strong>${escapeHtml(o.room_number)}</strong></td>
+        <td>${o.guest_name ? escapeHtml(o.guest_name) : "–"}</td>
+        <td><span class="order-cat">${escapeHtml(o.category)}</span></td>
+        <td>${escapeHtml(o.description)}</td>
+        <td>${o.amount > 0 ? fmt(o.amount) : "–"}</td>
+        <td><span class="status ${ORDER_STATUS_CLASS[o.status] || ""}">${escapeHtml(o.status)}</span></td>
         <td class="actions">
-          <button class="btn-edit" data-edit-expense="${e.id}">✎</button>
-          <button class="btn-del" data-del-expense="${e.id}">Sil</button>
+          ${isOps() ? `
+            <button data-order-status="${o.id}:Hazırlanır">Hazırlanır</button>
+            <button data-order-status="${o.id}:Çatdırıldı">✔ Çatdır</button>
+            <button data-order-status="${o.id}:Ləğv edildi">Ləğv</button>
+            <button class="btn-edit" data-edit-order="${o.id}">✎</button>
+          ` : ""}
+          ${isAdmin() ? `<button class="btn-del" data-del-order="${o.id}">Sil</button>` : ""}
         </td>
       </tr>
     `)
   );
+}
+
+// ─── Expenses ─────────────────────────────────────────────────
+function renderExpenses(list) {
+  const data = list ?? state.expenses;
+
+  // Category totals
+  const totals = {};
+  let grandTotal = 0;
+  data.forEach((e) => {
+    totals[e.category] = (totals[e.category] || 0) + e.amount;
+    grandTotal += e.amount;
+  });
+
+  // Update total badge
+  const badge = document.getElementById("expenseTotalBadge");
+  if (badge) badge.textContent = data.length ? `Toplam: ${fmt(grandTotal)}` : "";
+
+  // Populate category filter dropdown (only on full load, not filtered)
+  if (!list) {
+    const catFilter = document.getElementById("expenseCatFilter");
+    if (catFilter) {
+      const allCats = [...new Set(state.expenses.map((e) => e.category))].sort();
+      const curVal = catFilter.value;
+      catFilter.innerHTML =
+        `<option value="">Bütün kateqoriyalar</option>` +
+        allCats.map((c) =>
+          `<option value="${escapeHtml(c)}" ${c === curVal ? "selected" : ""}>${escapeHtml(c)}</option>`
+        ).join("");
+    }
+  }
+
+  const rows = data.map((e) => `
+    <tr>
+      <td>${e.spent_at}</td>
+      <td><strong>${escapeHtml(e.category)}</strong></td>
+      <td>${fmt(e.amount)}</td>
+      <td>${escapeHtml(e.note || "–")}</td>
+      <td class="actions">
+        <button class="btn-edit" data-edit-expense="${e.id}">✎</button>
+        <button class="btn-del" data-del-expense="${e.id}">Sil</button>
+      </td>
+    </tr>
+  `);
+
+  if (data.length) {
+    rows.push(`
+      <tr class="expense-total-row">
+        <td colspan="2" style="text-align:right;font-weight:700">Toplam:</td>
+        <td style="font-weight:700">${fmt(grandTotal)}</td>
+        <td colspan="2"></td>
+      </tr>
+    `);
+  }
+
+  buildTable("#expenseTable", ["Tarix", "Kateqoriya", "Məbləğ", "Qeyd", "Əməliyyat"], rows);
+}
+
+function applyExpenseFilter() {
+  const cat   = document.getElementById("expenseCatFilter")?.value || "";
+  const from  = document.getElementById("expenseFromFilter")?.value || "";
+  const to    = document.getElementById("expenseToFilter")?.value || "";
+  const filtered = state.expenses.filter((e) =>
+    (!cat  || e.category === cat) &&
+    (!from || e.spent_at >= from) &&
+    (!to   || e.spent_at <= to)
+  );
+  renderExpenses(filtered);
 }
 
 // ─── Requests ─────────────────────────────────────────────────
@@ -558,6 +653,7 @@ function renderAll() {
   renderBookings();
   renderDebtors();
   renderPayments();
+  renderRoomOrders();
   if (isAccounting()) renderExpenses();
   renderRequests();
   renderReminders();
@@ -576,28 +672,44 @@ async function loadAll() {
   const requests = [
     api("/api/summary"),
     api("/api/rooms"),
-    api("/api/hotels"),
-    api("/api/guests"),
-    api("/api/documents"),
-    api("/api/bookings"),
     api(`/api/calendar?from=${calFrom}&to=${calTo}`),
-    api("/api/debtors"),
-    api("/api/payments"),
-    api("/api/booking-requests"),
-    api("/api/reminders"),
   ];
-  if (isAccounting()) requests.push(api("/api/expenses"));
+  if (isOps()) {
+    requests.push(
+      api("/api/guests"),
+      api("/api/documents"),
+      api("/api/bookings"),
+      api("/api/room-orders"),
+      api("/api/booking-requests"),
+    );
+  }
+  if (isAccounting()) {
+    requests.push(
+      api("/api/debtors"),
+      api("/api/payments"),
+      api("/api/reminders"),
+      api("/api/expenses"),
+    );
+  }
   if (isAdmin())      requests.push(api("/api/users"), api("/api/audit?page=1&limit=100"), api("/api/backups"));
 
   const result = await Promise.all(requests);
-  const [summary, rooms, hotels, guests, documents, bookings, calendar, debtors, payments, reqs, reminders] = result;
-  let idx = 11;
+  const [summary, rooms, calendar] = result;
+  let idx = 3;
+  const guests    = isOps() ? result[idx++] : [];
+  const documents = isOps() ? result[idx++] : [];
+  const bookings  = isOps() ? result[idx++] : [];
+  const roomOrders = isOps() ? result[idx++] : [];
+  const reqs      = isOps() ? result[idx++] : [];
+  const debtors   = isAccounting() ? result[idx++] : [];
+  const payments  = isAccounting() ? result[idx++] : [];
+  const reminders = isAccounting() ? result[idx++] : { debtors: [], arrivals: [], departures: [] };
   const expenses = isAccounting() ? result[idx++] : [];
   const users    = isAdmin() ? result[idx++] : [];
   const auditRes = isAdmin() ? result[idx++] : { data: [] };
   const backups  = isAdmin() ? result[idx++] : [];
 
-  Object.assign(state, { summary, rooms, hotels, guests, documents, bookings, calendar, debtors, payments, requests: reqs, reminders, expenses, users, backups });
+  Object.assign(state, { summary, rooms, guests, documents, bookings, calendar, debtors, payments, roomOrders, requests: reqs, reminders, expenses, users, backups });
   state.audit = auditRes.data ?? auditRes;
   state.auditPage = 1;
 
@@ -627,7 +739,6 @@ function setTodayDefaults() {
   setIfEmpty('[name="check_in"]', t);
   setIfEmpty('[name="paid_at"]', t);
   setIfEmpty('[name="spent_at"]', t);
-  setIfEmpty('#publicRequestForm [name="check_in"]', t);
 
   const calFrom = document.getElementById("calFrom");
   const calTo   = document.getElementById("calTo");
@@ -725,10 +836,14 @@ function editExpense(id) {
   if (!e) return;
   openModal("Xərci redaktə et", `
     <form id="modalForm" class="form-grid">
-      <label>Kateqoriya<select name="category">
-        ${["Kommunal","Təmir","Təmizlik","Ərzaq","Əmək haqqı","Digər"].map((c) =>
-          `<option ${c === e.category ? "selected" : ""}>${c}</option>`).join("")}
-      </select></label>
+      <label>Kateqoriya
+        <input name="category" list="modalExpCats" value="${escapeHtml(e.category)}" required />
+        <datalist id="modalExpCats">
+          <option>Kommunal</option><option>Təmir</option><option>Təmizlik</option>
+          <option>Ərzaq</option><option>Reklam</option>
+          <option>Avadanlıq</option><option>Nəqliyyat</option><option>Digər</option>
+        </datalist>
+      </label>
       <label>Məbləğ<input name="amount" type="number" step="0.01" value="${e.amount}" required /></label>
       <label>Tarix<input name="spent_at" type="date" value="${e.spent_at}" required /></label>
       <label class="wide">Qeyd<input name="note" value="${escapeHtml(e.note || "")}" /></label>
@@ -744,11 +859,8 @@ function editExpense(id) {
 function editRoom(id) {
   const r = state.rooms.find((x) => x.id === id);
   if (!r) return;
-  const hOpts = state.hotels.map((h) =>
-    `<option value="${h.id}" ${h.id === r.hotel_id ? "selected" : ""}>${escapeHtml(h.name)}</option>`).join("");
   openModal("Otağı redaktə et", `
     <form id="modalForm" class="form-grid">
-      <label>Filial<select name="hotel_id">${hOpts}</select></label>
       <label>Nömrə<input name="number" value="${escapeHtml(r.number)}" required /></label>
       <label>Mərtəbə<input name="floor" type="number" min="1" value="${r.floor}" required /></label>
       <label>Tip<input name="room_type" value="${escapeHtml(r.room_type)}" required /></label>
@@ -760,6 +872,36 @@ function editRoom(id) {
   `, async (data) => {
     await api(`/api/rooms/${id}`, { method: "PUT", body: JSON.stringify(data) });
     toast("Otaq yeniləndi");
+    await loadAll();
+  });
+}
+
+function editRoomOrder(id) {
+  const o = state.roomOrders.find((x) => x.id === id);
+  if (!o) return;
+  const rOpts = state.rooms.map((r) =>
+    `<option value="${r.id}" ${r.id === o.room_id ? "selected" : ""}>${escapeHtml(r.number)}</option>`).join("");
+  const bOpts = `<option value="">– Opsional –</option>` +
+    state.bookings.filter((b) => b.status === "CheckedIn" || b.id === o.booking_id)
+      .map((b) => `<option value="${b.id}" ${b.id === o.booking_id ? "selected" : ""}>#${b.id} ${escapeHtml(b.guest_name)} / ${escapeHtml(b.room_number)}</option>`).join("");
+  const cats = ["Yemək","İçki","Gigiyena məhsulu","Əlavə inventar","Müxtəlif"];
+  const catOpts = cats.map((c) => `<option ${c === o.category ? "selected" : ""}>${c}</option>`).join("");
+  const statuses = ["Yeni","Hazırlanır","Çatdırıldı","Ləğv edildi"];
+  const statOpts = statuses.map((s) => `<option ${s === o.status ? "selected" : ""}>${s}</option>`).join("");
+  openModal("Sifarişi redaktə et", `
+    <form id="modalForm" class="form-grid">
+      <label>Otaq<select name="room_id">${rOpts}</select></label>
+      <label>Bron<select name="booking_id">${bOpts}</select></label>
+      <label>Kateqoriya<select name="category">${catOpts}</select></label>
+      <label>Təsvir<input name="description" value="${escapeHtml(o.description)}" required /></label>
+      <label>Məbləğ<input name="amount" type="number" step="0.01" value="${o.amount}" /></label>
+      <label>Status<select name="status">${statOpts}</select></label>
+      <label class="wide">Qeyd<input name="note" value="${escapeHtml(o.note || "")}" /></label>
+      <button type="submit">💾 Yadda saxla</button>
+    </form>
+  `, async (data) => {
+    await api(`/api/room-orders/${id}`, { method: "PUT", body: JSON.stringify(data) });
+    toast("Sifariş yeniləndi");
     await loadAll();
   });
 }
@@ -820,12 +962,23 @@ document.getElementById("guestSearch").addEventListener("input", (e) => {
       (g) => !q || g.full_name.toLowerCase().includes(q) ||
         (g.phone || "").includes(q) || (g.document_no || "").includes(q)
     );
-    // temporarily replace guests for render
     const orig = state.guests;
     state.guests = filtered;
     renderGuests();
     state.guests = orig;
   }, 300);
+});
+
+// ─── Expense filter events ────────────────────────────────────
+document.getElementById("expenseFilterBtn")?.addEventListener("click", applyExpenseFilter);
+document.getElementById("expenseFilterClearBtn")?.addEventListener("click", () => {
+  const catEl  = document.getElementById("expenseCatFilter");
+  const fromEl = document.getElementById("expenseFromFilter");
+  const toEl   = document.getElementById("expenseToFilter");
+  if (catEl)  catEl.value  = "";
+  if (fromEl) fromEl.value = "";
+  if (toEl)   toEl.value   = "";
+  renderExpenses();
 });
 
 // ─── Calendar controls ────────────────────────────────────────
@@ -913,15 +1066,23 @@ async function submitForm(form, path) {
   await loadAll();
 }
 
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("Fayl oxunmadı"));
+    reader.readAsDataURL(file);
+  });
+}
+
 // ─── Room form ────────────────────────────────────────────────
 document.querySelector("#roomForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   try { await submitForm(e.currentTarget, "/api/rooms"); toast("Otaq əlavə edildi"); }
-  catch (err) { toast(err.message, "error"); }
-});
-document.querySelector("#hotelForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  try { await submitForm(e.currentTarget, "/api/hotels"); toast("Filial əlavə edildi"); }
   catch (err) { toast(err.message, "error"); }
 });
 
@@ -933,10 +1094,20 @@ document.querySelector("#guestForm").addEventListener("submit", async (e) => {
 });
 document.querySelector("#documentForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const data = Object.fromEntries(new FormData(e.currentTarget).entries());
   try {
-    await api(`/api/guests/${data.guest_id}/documents`, { method: "POST", body: JSON.stringify(data) });
+    const formData = new FormData(e.currentTarget);
+    const file = formData.get("file");
+    if (!(file instanceof File) || !file.size) throw new Error("Sənəd faylı seçin");
+    const payload = {
+      guest_id: formData.get("guest_id"),
+      title: formData.get("title"),
+      file_name: file.name,
+      content_type: file.type || "application/octet-stream",
+      data_base64: await fileToBase64(file),
+    };
+    await api(`/api/guests/${payload.guest_id}/documents`, { method: "POST", body: JSON.stringify(payload) });
     e.currentTarget.reset();
+    setTodayDefaults();
     await loadAll();
     toast("Sənəd əlavə edildi");
   } catch (err) { toast(err.message, "error"); }
@@ -949,7 +1120,6 @@ document.querySelector("#bookingForm").addEventListener("submit", async (e) => {
   catch (err) { toast(err.message, "error"); }
 });
 
-// Auto-calc on date / room change
 ["check_in", "check_out"].forEach((name) => {
   document.querySelector(`[name="${name}"]`)?.addEventListener("change", calcBookingAmount);
 });
@@ -962,17 +1132,17 @@ document.querySelector("#paymentForm").addEventListener("submit", async (e) => {
   catch (err) { toast(err.message, "error"); }
 });
 
+// ─── Room order form ──────────────────────────────────────────
+document.querySelector("#roomOrderForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try { await submitForm(e.currentTarget, "/api/room-orders"); toast("Sifariş əlavə edildi"); }
+  catch (err) { toast(err.message, "error"); }
+});
+
 // ─── Expense form ─────────────────────────────────────────────
 document.querySelector("#expenseForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   try { await submitForm(e.currentTarget, "/api/expenses"); toast("Xərc əlavə edildi"); }
-  catch (err) { toast(err.message, "error"); }
-});
-
-// ─── Public request form ──────────────────────────────────────
-document.querySelector("#publicRequestForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  try { await submitForm(e.currentTarget, "/api/public/booking-requests"); toast("Sorğu yaradıldı"); }
   catch (err) { toast(err.message, "error"); }
 });
 
@@ -1020,6 +1190,32 @@ document.querySelector("#bookingTable").addEventListener("click", async (e) => {
     try {
       await api(`/api/bookings/${delBtn.dataset.delBooking}`, { method: "DELETE" });
       toast("Bron silindi", "warn");
+      await loadAll();
+    } catch (err) { toast(err.message, "error"); }
+  }
+});
+
+// ─── Room order table actions ─────────────────────────────────
+document.querySelector("#roomOrderTable").addEventListener("click", async (e) => {
+  const statusBtn = e.target.closest("[data-order-status]");
+  const editBtn   = e.target.closest("[data-edit-order]");
+  const delBtn    = e.target.closest("[data-del-order]");
+
+  if (statusBtn) {
+    const [id, status] = statusBtn.dataset.orderStatus.split(":");
+    try {
+      await api(`/api/room-orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+      toast(`Sifariş: ${status}`, "info");
+      await loadAll();
+    } catch (err) { toast(err.message, "error"); }
+    return;
+  }
+  if (editBtn) { editRoomOrder(parseInt(editBtn.dataset.editOrder, 10)); return; }
+  if (delBtn) {
+    if (!confirm("Bu sifariş silinsin?")) return;
+    try {
+      await api(`/api/room-orders/${delBtn.dataset.delOrder}`, { method: "DELETE" });
+      toast("Sifariş silindi", "warn");
       await loadAll();
     } catch (err) { toast(err.message, "error"); }
   }

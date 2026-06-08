@@ -3,36 +3,84 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="refresh" content="0; url=http://10.201.10.132:8020/">
     <title>Hotel 50</title>
     <style>
+      :root {
+        --bg: #edf5f0;
+        --panel: #ffffff;
+        --line: #c8e0d4;
+        --brand: #123c33;
+        --accent: #be9856;
+        --muted: #526b5c;
+      }
+      * { box-sizing: border-box; }
       body {
         min-height: 100vh;
         margin: 0;
         display: grid;
         place-items: center;
-        background: #f4f6f8;
-        color: #17202a;
+        padding: 24px;
+        background:
+          linear-gradient(160deg, rgba(6,42,32,.82), rgba(16,24,20,.68)),
+          url("https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Shusha_general_view.jpg/1280px-Shusha_general_view.jpg");
+        background-position: center;
+        background-size: cover;
+        color: #141f18;
         font-family: Arial, Helvetica, sans-serif;
       }
       main {
-        width: min(440px, calc(100% - 32px));
-        padding: 24px;
-        border: 1px solid #d9e0e8;
+        width: min(760px, 100%);
+        padding: 28px;
+        border: 1px solid rgba(190,152,86,.34);
         border-radius: 8px;
-        background: #fff;
+        background: rgba(255,255,255,.96);
+      }
+      h1 { margin: 0 0 10px; font-size: 36px; color: var(--brand); }
+      p { color: var(--muted); line-height: 1.5; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        margin-top: 24px;
+      }
+      .card {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+      }
+      .card strong {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--brand);
+        font-size: 18px;
       }
       a {
-        color: #0f766e;
+        color: var(--brand);
         font-weight: 700;
+        text-decoration: none;
+      }
+      @media (max-width: 700px) {
+        .grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
   <body>
     <main>
       <h1>Hotel 50</h1>
-      <p>Canlı sistemə yönləndirilirsiniz.</p>
-      <p><a href="http://10.201.10.132:8020/">Açılmadısa buradan daxil olun</a>.</p>
+      <p>Bu GitHub Pages səhifəsi canlı sistem və public rezervasiya forması üçün giriş nöqtəsidir.</p>
+      <div class="grid">
+        <section class="card">
+          <strong>İdarəetmə paneli</strong>
+          <p>Admin, reception və accounting istifadəçiləri üçün daxili panel.</p>
+          <a href="http://10.201.10.132:8020/">Canlı paneli aç</a>
+        </section>
+        <section class="card">
+          <strong>Public rezervasiya forması</strong>
+          <p>Müştərilər üçün ayrıca sorğu səhifəsi.</p>
+          <a href="http://10.201.10.132:8020/request.html">Sorğu səhifəsini aç</a>
+        </section>
+      </div>
     </main>
   </body>
 </html>
