@@ -33,6 +33,8 @@ LOGIN_ATTEMPTS: dict = {}
 ROLES = {"Admin", "Reception", "Accounting"}
 OPS_ROLES = {"Admin", "Reception"}
 MONEY_ROLES = {"Admin", "Accounting"}
+CHECKIN_HOUR = 14
+CHECKOUT_HOUR = 12
 
 
 # ─────────────────────── DB ───────────────────────
@@ -79,6 +81,7 @@ def init_db():
               people_count INTEGER NOT NULL DEFAULT 1,
               total_amount REAL NOT NULL DEFAULT 0,
               late_fee REAL NOT NULL DEFAULT 0,
+              actual_check_out_at TEXT DEFAULT '',
               note TEXT DEFAULT '',
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -180,6 +183,7 @@ def init_db():
         for sql in [
             "ALTER TABLE rooms ADD COLUMN cleaning_status TEXT DEFAULT 'Təmiz'",
             "ALTER TABLE bookings ADD COLUMN late_fee REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE bookings ADD COLUMN actual_check_out_at TEXT DEFAULT ''",
             "ALTER TABLE guest_documents ADD COLUMN storage_type TEXT NOT NULL DEFAULT 'text'",
         ]:
             try:
@@ -357,6 +361,23 @@ def validate_dates(check_in: str, check_out: str):
         return True, ""
     except ValueError:
         return False, "Tarix formatı düzgün deyil (YYYY-MM-DD)"
+
+
+def current_local_time():
+    return datetime.now()
+
+
+def calculate_late_fee(booking_item, checkout_at=None):
+    checkout_at = checkout_at or current_local_time()
+    due_at = datetime.strptime(str(booking_item["check_out"]), "%Y-%m-%d").replace(
+        hour=CHECKOUT_HOUR, minute=0, second=0, microsecond=0
+    )
+    if checkout_at <= due_at:
+        return 0
+    late_seconds = (checkout_at - due_at).total_seconds()
+    late_hours = int((late_seconds + 3599) // 3600)
+    hourly_rate = money(booking_item.get("room_rate", 0)) / 24
+    return round(hourly_rate * late_hours, 2)
 
 
 def login_key(handler):
@@ -1263,18 +1284,31 @@ class Handler(SimpleHTTPRequestHandler):
                 ok_d, msg_d = validate_dates(ci, co)
                 if not ok_d:
                     return self.send_error_json(msg_d, 400)
+                status = str(data.get("status") or "Reserved")
                 ok, message = has_capacity(integer(data.get("room_id")), ci, co, integer(data.get("people_count"), 1), integer(parts[2]))
                 if not ok:
                     return self.send_error_json(message, 400)
+                late_fee = money(data.get("late_fee"))
+                actual_check_out_at = ""
+                if status == "CheckedOut":
+                    booking_item = {
+                        "check_out": co,
+                        "room_rate": row("SELECT nightly_rate AS room_rate FROM rooms WHERE id = ?", (integer(data.get("room_id")),))["room_rate"],
+                    }
+                    actual_checkout_dt = current_local_time()
+                    late_fee = calculate_late_fee(booking_item, actual_checkout_dt)
+                    actual_check_out_at = actual_checkout_dt.isoformat()
                 execute(
-                    "UPDATE bookings SET guest_id = ?, room_id = ?, check_in = ?, check_out = ?, status = ?, people_count = ?, total_amount = ?, note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    "UPDATE bookings SET guest_id = ?, room_id = ?, check_in = ?, check_out = ?, status = ?, people_count = ?, total_amount = ?, late_fee = ?, actual_check_out_at = ?, note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                     (
                         integer(data.get("guest_id")),
                         integer(data.get("room_id")),
                         ci, co,
-                        str(data.get("status") or "Reserved"),
+                        status,
                         integer(data.get("people_count"), 1),
                         money(data.get("total_amount")),
+                        late_fee,
+                        actual_check_out_at,
                         str(data.get("note") or ""),
                         integer(parts[2]),
                     ),
@@ -1438,9 +1472,26 @@ class Handler(SimpleHTTPRequestHandler):
                 status = str(data.get("status") or "")
                 if status not in {"Reserved", "CheckedIn", "CheckedOut", "Cancelled"}:
                     return self.send_error_json("Status düzgün deyil", 400)
+                booking_item = row(
+                    """
+                    SELECT b.*, r.nightly_rate AS room_rate
+                    FROM bookings b
+                    JOIN rooms r ON r.id = b.room_id
+                    WHERE b.id = ?
+                    """,
+                    (integer(parts[2]),),
+                )
+                if not booking_item:
+                    return self.send_error_json("Bron tapılmadı", 404)
+                late_fee = money(booking_item.get("late_fee"))
+                actual_check_out_at = str(booking_item.get("actual_check_out_at") or "")
+                if status == "CheckedOut":
+                    actual_checkout_dt = current_local_time()
+                    late_fee = calculate_late_fee(booking_item, actual_checkout_dt)
+                    actual_check_out_at = actual_checkout_dt.isoformat()
                 execute(
-                    "UPDATE bookings SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (status, integer(parts[2])),
+                    "UPDATE bookings SET status = ?, late_fee = ?, actual_check_out_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (status, late_fee, actual_check_out_at, integer(parts[2])),
                 )
                 audit(self.current_user["username"], f"booking.{status}", "booking", parts[2])
                 return self.send_json({"ok": True})
@@ -1485,15 +1536,17 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"ok": True})
 
             if len(parts) == 4 and parts[:2] == ["api", "bookings"] and parts[3] == "late-fee":
-                if not self.require_auth(MONEY_ROLES):
+                if not self.require_auth({"Admin"}):
                     return
                 data = json_body(self)
                 amount = money(data.get("late_fee"))
+                if amount != 0:
+                    return self.send_error_json("Gecikmə yalnız Admin tərəfindən sıfırlana bilər", 400)
                 execute(
-                    "UPDATE bookings SET late_fee = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (amount, integer(parts[2])),
+                    "UPDATE bookings SET late_fee = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (integer(parts[2]),),
                 )
-                audit(self.current_user["username"], "booking.late_fee", "booking", parts[2], amount)
+                audit(self.current_user["username"], "booking.late_fee.cleared", "booking", parts[2])
                 return self.send_json({"ok": True})
 
             return self.send_error_json("Not found", 404)

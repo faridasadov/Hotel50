@@ -5,6 +5,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -109,6 +110,64 @@ class Hotel50ApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(headers.get("Content-Type"), "application/pdf")
         self.assertEqual(data, b"fake-pdf-content")
+
+    def test_checkout_auto_calculates_late_fee_and_only_admin_can_clear(self):
+        reception = self.login("reception", "reception123")
+        accounting = self.login("accounting", "accounting123")
+        admin = self.login("admin", "admin123")
+
+        status, _, data = self.request("POST", "/api/guests", {
+            "full_name": "Late Checkout Guest",
+            "phone": "+994507777777",
+            "document_no": "BB1234567",
+            "note": "",
+        }, headers=reception)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        guest_id = json.loads(data)["id"]
+
+        status, _, data = self.request("POST", "/api/bookings", {
+            "guest_id": guest_id,
+            "room_id": 1,
+            "check_in": "2026-06-07",
+            "check_out": "2026-06-08",
+            "status": "CheckedIn",
+            "people_count": 1,
+            "total_amount": 45,
+            "note": "",
+        }, headers=reception)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        booking_id = json.loads(data)["id"]
+
+        original_now = hotel_app.current_local_time
+        hotel_app.current_local_time = lambda: datetime(2026, 6, 8, 15, 30, 0)
+        try:
+            status, _, data = self.request("PATCH", f"/api/bookings/{booking_id}/status", {
+                "status": "CheckedOut",
+            }, headers=reception)
+            self.assertEqual(status, 200, data.decode("utf-8"))
+        finally:
+            hotel_app.current_local_time = original_now
+
+        status, _, data = self.request("GET", "/api/bookings", headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        booking = next(item for item in json.loads(data) if item["id"] == booking_id)
+        self.assertEqual(booking["status"], "CheckedOut")
+        self.assertEqual(booking["late_fee"], 7.5)
+
+        status, _, _ = self.request("PATCH", f"/api/bookings/{booking_id}/late-fee", {
+            "late_fee": 0,
+        }, headers=accounting)
+        self.assertEqual(status, 403)
+
+        status, _, data = self.request("PATCH", f"/api/bookings/{booking_id}/late-fee", {
+            "late_fee": 0,
+        }, headers=admin)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+
+        status, _, data = self.request("GET", "/api/bookings", headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        booking = next(item for item in json.loads(data) if item["id"] == booking_id)
+        self.assertEqual(booking["late_fee"], 0)
 
 
 if __name__ == "__main__":

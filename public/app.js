@@ -319,16 +319,16 @@ function renderBookings(list) {
         <td>${b.id}</td>
         <td><strong>${escapeHtml(b.guest_name)}</strong><br><small>${escapeHtml(b.guest_phone || "")}</small></td>
         <td>${escapeHtml(b.room_number)} <small>(${b.people_count} nəfər)</small></td>
-        <td>${b.check_in}<br>→ ${b.check_out}</td>
+        <td>${b.check_in} 14:00<br>→ ${b.check_out} 12:00</td>
         <td><span class="status ${b.status}">${b.status}</span></td>
-        <td>${fmt(b.total_amount)}${b.late_fee > 0 ? `<br><small>+${fmt(b.late_fee)} gec</small>` : ""}</td>
+        <td>${fmt(b.total_amount)}${b.late_fee > 0 ? `<br><small>+${fmt(b.late_fee)} gecikmə</small>` : ""}</td>
         <td>${fmt(b.paid_amount)}</td>
         <td style="${Number(b.balance) > 0 ? "color:var(--danger);font-weight:700" : ""}">${fmt(b.balance)}</td>
         <td class="actions">
           ${isOps() ? `<button data-status="${b.id}:CheckedIn">✔ Giriş</button>
           <button data-status="${b.id}:CheckedOut">✘ Çıxış</button>
           <button data-status="${b.id}:Cancelled">Ləğv</button>` : ""}
-          ${isAccounting() ? `<button data-late-fee="${b.id}">+Gecikmə</button>` : ""}
+          ${isAdmin() && Number(b.late_fee) > 0 ? `<button data-late-fee="${b.id}">Gecikməni sil</button>` : ""}
           ${isOps() ? `<button class="btn-edit" data-edit-booking="${b.id}">✎ Redaktə</button>` : ""}
           ${isAdmin() ? `<button class="btn-del" data-del-booking="${b.id}">Sil</button>` : ""}
         </td>
@@ -1161,13 +1161,12 @@ document.querySelector("#bookingTable").addEventListener("click", async (e) => {
   const delBtn     = e.target.closest("[data-del-booking]");
 
   if (lateFeeBtn) {
-    const lateFee = prompt("Gec çıxış əlavə ödənişi (AZN):", "0");
-    if (lateFee === null) return;
+    if (!confirm("Bu bron üçün avtomatik hesablanmış gecikmə silinsin?")) return;
     try {
       await api(`/api/bookings/${lateFeeBtn.dataset.lateFee}/late-fee`, {
-        method: "PATCH", body: JSON.stringify({ late_fee: lateFee }),
+        method: "PATCH", body: JSON.stringify({ late_fee: 0 }),
       });
-      toast("Gecikmə ödənişi əlavə edildi");
+      toast("Gecikmə silindi");
       await loadAll();
     } catch (err) { toast(err.message, "error"); }
     return;
