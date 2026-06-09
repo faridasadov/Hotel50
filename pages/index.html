@@ -60,6 +60,17 @@
         font-weight: 700;
         text-decoration: none;
       }
+      .endpoint {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #f6fbf8;
+        color: var(--brand);
+        font-family: monospace;
+        font-size: 13px;
+      }
       @media (max-width: 700px) {
         .grid { grid-template-columns: 1fr; }
       }
@@ -68,17 +79,17 @@
   <body>
     <main>
       <h1>Hotel 50</h1>
-      <p>Bu GitHub Pages səhifəsi canlı sistem və public rezervasiya forması üçün giriş nöqtəsidir.</p>
+      <p>Bu GitHub Pages səhifəsi public məlumat və rezervasiya giriş nöqtəsidir. İdarəetmə paneli yalnız server şəbəkəsindən açılır.</p>
       <div class="grid">
         <section class="card">
           <strong>İdarəetmə paneli</strong>
-          <p>Admin, reception və accounting istifadəçiləri üçün daxili panel.</p>
-          <a href="http://10.201.10.132:8020/">Canlı paneli aç</a>
+          <p>Admin, reception və accounting paneli GitHub Pages üzərindən public açılmır. Yalnız lokal/server şəbəkəsindən istifadə olunur.</p>
+          <span class="endpoint">http://10.201.10.132:8020</span>
         </section>
         <section class="card">
           <strong>Public rezervasiya forması</strong>
-          <p>Müştərilər üçün ayrıca sorğu səhifəsi.</p>
-          <a href="http://10.201.10.132:8020/request.html">Sorğu səhifəsini aç</a>
+          <p>Müştərilər üçün public GitHub Pages səhifəsi.</p>
+          <a href="/Hotel50/request.html">Sorğu səhifəsini aç</a>
         </section>
       </div>
     </main>

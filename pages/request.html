@@ -2,11 +2,84 @@
 <html lang="az">
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="refresh" content="0; url=http://10.201.10.132:8020/request.html">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Hotel 50 Rezervasiya Sorğusu</title>
+    <style>
+      :root {
+        --bg: #edf5f0;
+        --panel: #ffffff;
+        --line: #c8e0d4;
+        --brand: #123c33;
+        --muted: #526b5c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background:
+          linear-gradient(160deg, rgba(6,42,32,.82), rgba(16,24,20,.68)),
+          url("https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Shusha_general_view.jpg/1280px-Shusha_general_view.jpg");
+        background-position: center;
+        background-size: cover;
+        font-family: Arial, Helvetica, sans-serif;
+        color: #141f18;
+      }
+      main {
+        width: min(760px, 100%);
+        padding: 28px;
+        border: 1px solid rgba(190,152,86,.34);
+        border-radius: 8px;
+        background: rgba(255,255,255,.96);
+      }
+      h1 {
+        margin: 0 0 10px;
+        color: var(--brand);
+        font-size: 34px;
+      }
+      p {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+      .note {
+        margin-top: 18px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #f6fbf8;
+      }
+      a {
+        color: var(--brand);
+        font-weight: 700;
+        text-decoration: none;
+      }
+      .endpoint {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        color: var(--brand);
+        font-family: monospace;
+        font-size: 13px;
+      }
+    </style>
   </head>
   <body>
-    <p><a href="http://10.201.10.132:8020/request.html">Rezervasiya sorğusu səhifəsini aç</a></p>
+    <main>
+      <h1>Hotel 50 Rezervasiya Sorğusu</h1>
+      <p>Bu GitHub Pages səhifəsi lokal şəbəkədə işləyən backend-ə avtomatik keçid etmir. Public GitHub Pages üzərindən lokal IP-yə yönləndirmə çıxarıldı.</p>
+      <div class="note">
+        <p>Əgər server şəbəkəsindəsinizsə, rezervasiya sorğusunu bu ünvandan göndərin:</p>
+        <span class="endpoint">http://10.201.10.132:8020/request.html</span>
+      </div>
+      <div class="note">
+        <p>GitHub Pages ana səhifəsinə qayıtmaq üçün:</p>
+        <a href="/Hotel50/">Hotel 50 giriş səhifəsi</a>
+      </div>
+    </main>
   </body>
 </html>
