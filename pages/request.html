@@ -138,8 +138,8 @@
   <body>
     <main>
       <p class="eyebrow">Hotel 50</p>
-      <h1>Rezervasiya sorğusu</h1>
-      <p>Bu GitHub-hosted form sorğunu GitHub üzərində hazırlayır. Göndərişdən sonra yeni sorğu səhifəsi açılacaq.</p>
+      <h1>Sorğu yarat / Bron et</h1>
+      <p>Qonaq məlumatını daxil et və rezervasiya sorğusunu hazırla.</p>
 
       <form id="requestForm">
         <label>Ad soyad<input name="full_name" required></label>
@@ -150,7 +150,7 @@
         <label>Otaq/Qeyd<input name="room_note" placeholder="İstək və ya otaq qeydi"></label>
         <label class="wide">Əlavə qeyd<textarea name="note"></textarea></label>
         <div class="wide actions">
-          <button type="submit">Sorğunu hazırla</button>
+          <button type="submit">Sorğu yarat</button>
           <a class="button alt" href="/Hotel50/">Geri qayıt</a>
         </div>
       </form>
@@ -163,17 +163,17 @@
           Tarix və əlaqə məlumatını daxil et.
         </article>
         <article class="step">
-          <strong>2. Sorğunu hazırla</strong>
-          GitHub yeni sorğu səhifəsini açacaq.
+          <strong>2. Sorğunu yarat</strong>
+          Yeni sorğu pəncərəsi açılacaq.
         </article>
         <article class="step">
           <strong>3. Təsdiqlə</strong>
-          Açılan səhifədə `Create issue` düyməsini bas.
+          Açılan səhifədə sorğunu təsdiqlə.
         </article>
       </section>
 
       <div class="note">
-        Bu səhifə yalnız GitHub resursundan istifadə edir. Lokal panel və lokal backend burada çağırılmır.
+        Bu public səhifə sorğunu ayrıca pəncərədə hazırlayır.
       </div>
     </main>
 
@@ -209,7 +209,7 @@
           + `?title=${encodeURIComponent(title)}`
           + `&labels=${encodeURIComponent("booking-request")}`
           + `&body=${encodeURIComponent(body)}`;
-        status.textContent = "GitHub sorğu səhifəsi yeni pəncərədə açılır.";
+        status.textContent = "Sorğu pəncərəsi yeni tab-da açılır.";
         window.open(url, "_blank", "noopener");
       });
     </script>
