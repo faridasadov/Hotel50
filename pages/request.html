@@ -3,13 +3,15 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Hotel 50 GitHub Sorğusu</title>
+    <title>Hotel 50 Rezervasiya Sorğusu</title>
     <style>
       :root {
         --bg: #edf5f0;
         --panel: #ffffff;
+        --panel-2: #f4faf7;
         --line: #c8e0d4;
         --brand: #123c33;
+        --accent: #be9856;
         --muted: #526b5c;
       }
       * { box-sizing: border-box; }
@@ -36,6 +38,14 @@
       }
       h1 { margin: 0 0 10px; color: var(--brand); font-size: 34px; }
       p { color: var(--muted); line-height: 1.55; }
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .14em;
+      }
       form {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -58,6 +68,11 @@
         border-radius: 6px;
         font: inherit;
       }
+      input:focus, textarea:focus {
+        outline: 0;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(190,152,86,.14);
+      }
       textarea { min-height: 110px; resize: vertical; }
       button, a.button {
         display: inline-flex;
@@ -73,6 +88,11 @@
         text-decoration: none;
         cursor: pointer;
       }
+      a.button.alt {
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+        color: var(--brand);
+      }
       .actions {
         display: flex;
         gap: 12px;
@@ -80,21 +100,46 @@
         margin-top: 20px;
       }
       .note {
-        margin-top: 16px;
+        margin-top: 18px;
         padding: 14px 16px;
         border: 1px solid var(--line);
         border-radius: 6px;
-        background: #f6fbf8;
+        background: var(--panel-2);
+      }
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 20px;
+      }
+      .step {
+        padding: 14px 16px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel-2);
+      }
+      .step strong {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--brand);
+      }
+      .status {
+        min-height: 22px;
+        margin-top: 14px;
+        color: var(--brand);
+        font-weight: 700;
       }
       @media (max-width: 700px) {
         form { grid-template-columns: 1fr; }
+        .steps { grid-template-columns: 1fr; }
       }
     </style>
   </head>
   <body>
     <main>
-      <h1>Hotel 50 Sorğu Forması</h1>
-      <p>Bu səhifə yalnız GitHub resursundan istifadə edir. Sorğu GitHub repo-da issue kimi yaradılır.</p>
+      <p class="eyebrow">Hotel 50</p>
+      <h1>Rezervasiya sorğusu</h1>
+      <p>Bu GitHub-hosted form sorğunu GitHub üzərində hazırlayır. Göndərişdən sonra yeni sorğu səhifəsi açılacaq.</p>
 
       <form id="requestForm">
         <label>Ad soyad<input name="full_name" required></label>
@@ -105,21 +150,47 @@
         <label>Otaq/Qeyd<input name="room_note" placeholder="İstək və ya otaq qeydi"></label>
         <label class="wide">Əlavə qeyd<textarea name="note"></textarea></label>
         <div class="wide actions">
-          <button type="submit">GitHub-da sorğu yarat</button>
-          <a class="button" href="/Hotel50/">Geri qayıt</a>
+          <button type="submit">Sorğunu hazırla</button>
+          <a class="button alt" href="/Hotel50/">Geri qayıt</a>
         </div>
       </form>
 
+      <div class="status" id="formStatus"></div>
+
+      <section class="steps">
+        <article class="step">
+          <strong>1. Məlumatı doldur</strong>
+          Tarix və əlaqə məlumatını daxil et.
+        </article>
+        <article class="step">
+          <strong>2. Sorğunu hazırla</strong>
+          GitHub yeni sorğu səhifəsini açacaq.
+        </article>
+        <article class="step">
+          <strong>3. Təsdiqlə</strong>
+          Açılan səhifədə `Create issue` düyməsini bas.
+        </article>
+      </section>
+
       <div class="note">
-        Sorğu yaradıldıqdan sonra GitHub yeni issue səhifəsi açılacaq. Orada yalnız `Create issue` düyməsini basmaq qalacaq.
+        Bu səhifə yalnız GitHub resursundan istifadə edir. Lokal panel və lokal backend burada çağırılmır.
       </div>
     </main>
 
     <script>
       const form = document.getElementById("requestForm");
+      const status = document.getElementById("formStatus");
+      const checkInEl = form.querySelector('[name="check_in"]');
+      const checkOutEl = form.querySelector('[name="check_out"]');
+      const today = new Date().toISOString().slice(0, 10);
+      checkInEl.value = today;
       form.addEventListener("submit", (event) => {
         event.preventDefault();
         const data = Object.fromEntries(new FormData(form).entries());
+        if (data.check_in && data.check_out && data.check_out <= data.check_in) {
+          status.textContent = "Çıxış tarixi giriş tarixindən sonra olmalıdır.";
+          return;
+        }
         const title = `Booking request: ${data.full_name || "Guest"}`;
         const body = [
           "New booking request",
@@ -136,7 +207,9 @@
         ].join("\n");
         const url = "https://github.com/faridasadov/Hotel50/issues/new"
           + `?title=${encodeURIComponent(title)}`
+          + `&labels=${encodeURIComponent("booking-request")}`
           + `&body=${encodeURIComponent(body)}`;
+        status.textContent = "GitHub sorğu səhifəsi yeni pəncərədə açılır.";
         window.open(url, "_blank", "noopener");
       });
     </script>
