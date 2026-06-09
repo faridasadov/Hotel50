@@ -74,6 +74,8 @@
     </main>
 
     <script>
+      const APP_BASE = window.location.pathname.startsWith("/hotel50/") ? "/hotel50" : "";
+      const appPath = (path) => `${APP_BASE}${path}`;
       const form = document.getElementById("publicRequestForm");
       const statusEl = document.getElementById("publicStatus");
       const today = new Date().toISOString().slice(0, 10);
@@ -86,7 +88,7 @@
         button.disabled = true;
         try {
           const payload = Object.fromEntries(new FormData(form).entries());
-          const res = await fetch("/api/public/booking-requests", {
+          const res = await fetch(appPath("/api/public/booking-requests"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),

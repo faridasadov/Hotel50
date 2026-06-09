@@ -2,9 +2,12 @@
 //  Hotel 50 · Front-end
 // ═══════════════════════════════════════════════════════════════
 
+const APP_BASE = window.location.pathname.startsWith("/hotel50/") ? "/hotel50" : "";
+const appPath = (path) => `${APP_BASE}${path}`;
+
 // ─── API helper ──────────────────────────────────────────────
 const api = (path, options = {}) =>
-  fetch(path, { headers: { "Content-Type": "application/json" }, ...options })
+  fetch(appPath(path), { headers: { "Content-Type": "application/json" }, ...options })
     .then(async (res) => {
       const data = await res.json();
       if (res.status === 401) showLogin();
@@ -300,7 +303,7 @@ function renderGuests() {
         <td>${escapeHtml(doc.file_name)}</td>
         <td>${doc.created_at.slice(0, 10)}</td>
         <td class="actions">
-          <a href="/api/documents/${doc.id}" target="_blank">Aç</a>
+          <a href="${appPath(`/api/documents/${doc.id}`)}" target="_blank">Aç</a>
           ${isAdmin() ? `<button class="btn-del" data-del-doc="${doc.id}">Sil</button>` : ""}
         </td>
       </tr>
@@ -368,7 +371,7 @@ function renderPayments() {
         <td><strong>${fmt(p.amount)}</strong></td>
         <td>${escapeHtml(p.method)}</td>
         <td>${escapeHtml(p.note || "–")}</td>
-        <td><a href="/api/receipts/${p.id}" target="_blank">🖨 Qəbz</a></td>
+        <td><a href="${appPath(`/api/receipts/${p.id}`)}" target="_blank">🖨 Qəbz</a></td>
         <td class="actions">
           ${isAccounting() ? `<button class="btn-edit" data-edit-payment="${p.id}">✎</button>
           <button class="btn-del" data-del-payment="${p.id}">Sil</button>` : ""}
@@ -1445,7 +1448,7 @@ document.getElementById("auditNextBtn").addEventListener("click", async () => {
 
 // ─── Export ───────────────────────────────────────────────────
 document.querySelector("#exportBtn").addEventListener("click", () => {
-  window.open("/api/export/monthly", "_blank");
+  window.open(appPath("/api/export/monthly"), "_blank");
 });
 
 // ─── Keyboard shortcut: Escape closes modal ───────────────────
