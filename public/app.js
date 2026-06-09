@@ -482,11 +482,12 @@ function applyExpenseFilter() {
 }
 
 // ─── Requests ─────────────────────────────────────────────────
-function renderRequests() {
+function renderRequests(list) {
+  const data = list ?? state.requests;
   buildTable(
     "#requestTable",
     ["Tarix", "Ad", "Telefon", "Tarix aralığı", "Nəfər", "Status", "Qəbul edən", "Əməliyyat"],
-    state.requests.map((r) => `
+    data.map((r) => `
       <tr>
         <td>${r.created_at.slice(0, 10)}</td>
         <td><strong>${escapeHtml(r.full_name)}</strong></td>
@@ -499,10 +500,21 @@ function renderRequests() {
           <button data-req-status="${r.id}:Baxılır">Baxılır</button>
           <button data-req-status="${r.id}:Təsdiq">Təsdiq</button>
           <button data-req-status="${r.id}:İmtina">İmtina</button>
+          <button class="btn-edit" data-convert-request="${r.id}">Bron yarat</button>
         </td>
       </tr>
     `)
   );
+}
+
+function applyRequestFilter() {
+  const status = document.getElementById("requestStatusFilter")?.value || "";
+  const handler = (document.getElementById("requestHandlerFilter")?.value || "").trim().toLowerCase();
+  const filtered = state.requests.filter((r) =>
+    (!status || r.status === status) &&
+    (!handler || String(r.handled_by || "").toLowerCase().includes(handler))
+  );
+  renderRequests(filtered);
 }
 
 // ─── Reminders ────────────────────────────────────────────────
@@ -809,6 +821,31 @@ function editBooking(id) {
   });
 }
 
+function convertRequestToBooking(id) {
+  const req = state.requests.find((x) => x.id === id);
+  if (!req) return;
+  const roomOpts = state.rooms.map((r) =>
+    `<option value="${r.id}">${escapeHtml(r.number)} (boş: ${r.free_beds}/${r.capacity}) – ${fmt(r.nightly_rate)}/gecə</option>`
+  ).join("");
+  openModal("Sorğunu brona çevir", `
+    <form id="modalForm" class="form-grid">
+      <label>Ad soyad<input value="${escapeHtml(req.full_name)}" disabled /></label>
+      <label>Telefon<input value="${escapeHtml(req.phone || "")}" disabled /></label>
+      <label>Otaq<select name="room_id">${roomOpts}</select></label>
+      <label>Status<select name="status"><option>Reserved</option><option>CheckedIn</option></select></label>
+      <label>Giriş<input name="check_in" type="date" value="${escapeHtml(req.check_in || today())}" required /></label>
+      <label>Çıxış<input name="check_out" type="date" value="${escapeHtml(req.check_out || dateOffset(1))}" required /></label>
+      <label>Nəfər<input name="people_count" type="number" min="1" value="${req.people_count || 1}" required /></label>
+      <label class="wide">Qeyd<input name="note" value="${escapeHtml(req.note || "")}" /></label>
+      <button type="submit">Bron yarat</button>
+    </form>
+  `, async (data) => {
+    await api(`/api/booking-requests/${id}/convert`, { method: "POST", body: JSON.stringify(data) });
+    toast("Sorğu brona çevrildi");
+    await loadAll();
+  });
+}
+
 function editPayment(id) {
   const p = state.payments.find((x) => x.id === id);
   if (!p) return;
@@ -980,6 +1017,14 @@ document.getElementById("expenseFilterClearBtn")?.addEventListener("click", () =
   if (fromEl) fromEl.value = "";
   if (toEl)   toEl.value   = "";
   renderExpenses();
+});
+document.getElementById("requestFilterBtn")?.addEventListener("click", applyRequestFilter);
+document.getElementById("requestFilterClearBtn")?.addEventListener("click", () => {
+  const statusEl = document.getElementById("requestStatusFilter");
+  const handlerEl = document.getElementById("requestHandlerFilter");
+  if (statusEl) statusEl.value = "";
+  if (handlerEl) handlerEl.value = "";
+  renderRequests();
 });
 
 // ─── Calendar controls ────────────────────────────────────────
@@ -1310,6 +1355,11 @@ document.querySelector("#expenseTable").addEventListener("click", async (e) => {
 // ─── Request table actions ────────────────────────────────────
 document.querySelector("#requestTable").addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-req-status]");
+  const convertBtn = e.target.closest("[data-convert-request]");
+  if (convertBtn) {
+    convertRequestToBooking(parseInt(convertBtn.dataset.convertRequest, 10));
+    return;
+  }
   if (!btn) return;
   const [id, status] = btn.dataset.reqStatus.split(":");
   try {

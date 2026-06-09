@@ -226,6 +226,18 @@
             <h2>Online rezervasiya sorğuları</h2>
             <a class="text-link-btn" href="/request.html" target="_blank" rel="noopener">Public formu aç</a>
           </div>
+          <div class="expense-filters">
+            <select id="requestStatusFilter">
+              <option value="">Bütün statuslar</option>
+              <option value="Yeni">Yeni</option>
+              <option value="Baxılır">Baxılır</option>
+              <option value="Təsdiq">Təsdiq</option>
+              <option value="İmtina">İmtina</option>
+            </select>
+            <input id="requestHandlerFilter" type="search" placeholder="Qəbul edən" />
+            <button id="requestFilterBtn" type="button">Filtrə et</button>
+            <button id="requestFilterClearBtn" type="button">Sıfırla</button>
+          </div>
           <div class="table-wrap"><table id="requestTable"></table></div>
         </section>
 

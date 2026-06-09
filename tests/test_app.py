@@ -94,6 +94,44 @@ class Hotel50ApiTests(unittest.TestCase):
         self.assertEqual(request_row["handled_by"], "reception")
         self.assertTrue(request_row["handled_at"])
 
+    def test_request_can_convert_to_booking(self):
+        status, _, data = self.request("POST", "/api/public/booking-requests", {
+            "full_name": "Convert Guest",
+            "phone": "+994509998877",
+            "check_in": "2026-06-20",
+            "check_out": "2026-06-22",
+            "people_count": 1,
+            "note": "late arrival",
+        })
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        request_id = json.loads(data)["id"]
+
+        reception = self.login("reception", "reception123")
+        status, _, data = self.request("POST", f"/api/booking-requests/{request_id}/convert", {
+            "room_id": 1,
+            "status": "Reserved",
+            "check_in": "2026-06-20",
+            "check_out": "2026-06-22",
+            "people_count": 1,
+            "note": "late arrival",
+        }, headers=reception)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        result = json.loads(data)
+        self.assertTrue(result["guest_id"])
+        self.assertTrue(result["booking_id"])
+
+        status, _, data = self.request("GET", "/api/bookings", headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        booking = next(item for item in json.loads(data) if item["id"] == result["booking_id"])
+        self.assertEqual(booking["guest_name"], "Convert Guest")
+        self.assertEqual(booking["status"], "Reserved")
+
+        status, _, data = self.request("GET", "/api/booking-requests", headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        request_row = next(item for item in json.loads(data) if item["id"] == request_id)
+        self.assertEqual(request_row["status"], "Təsdiq")
+        self.assertEqual(request_row["handled_by"], "reception")
+
     def test_role_permissions_are_separated(self):
         reception = self.login("reception", "reception123")
         accounting = self.login("accounting", "accounting123")

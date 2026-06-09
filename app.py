@@ -1122,6 +1122,54 @@ class Handler(SimpleHTTPRequestHandler):
                 audit(self.current_user["username"], "booking.created", "booking", booking_id)
                 return self.send_json({"id": booking_id}, 201)
 
+            if len(parts := path.strip("/").split("/")) == 4 and parts[:2] == ["api", "booking-requests"] and parts[3] == "convert":
+                if not self.require_auth(OPS_ROLES):
+                    return
+                request_item = row("SELECT * FROM booking_requests WHERE id = ?", (integer(parts[2]),))
+                if not request_item:
+                    return self.send_error_json("Sorğu tapılmadı", 404)
+                ci = str(data.get("check_in") or request_item.get("check_in") or "")
+                co = str(data.get("check_out") or request_item.get("check_out") or "")
+                ok_d, msg_d = validate_dates(ci, co)
+                if not ok_d:
+                    return self.send_error_json(msg_d, 400)
+                room_id = integer(data.get("room_id"))
+                people_count = integer(data.get("people_count"), integer(request_item.get("people_count"), 1))
+                ok, message = has_capacity(room_id, ci, co, people_count)
+                if not ok:
+                    return self.send_error_json(message, 400)
+                guest_id = execute(
+                    "INSERT INTO guests (full_name, phone, document_no, note) VALUES (?, ?, ?, ?)",
+                    (
+                        str(request_item.get("full_name") or "").strip(),
+                        str(request_item.get("phone") or "").strip(),
+                        "",
+                        str(data.get("note") or request_item.get("note") or ""),
+                    ),
+                )
+                room_item = row("SELECT nightly_rate FROM rooms WHERE id = ?", (room_id,))
+                total_amount = round(money(room_item["nightly_rate"]) * days_between(ci, co), 2)
+                booking_id = execute(
+                    "INSERT INTO bookings (guest_id, room_id, check_in, check_out, status, people_count, total_amount, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        guest_id,
+                        room_id,
+                        ci,
+                        co,
+                        str(data.get("status") or "Reserved"),
+                        people_count,
+                        total_amount,
+                        str(data.get("note") or request_item.get("note") or ""),
+                    ),
+                )
+                handled_at = current_local_time().isoformat()
+                execute(
+                    "UPDATE booking_requests SET status = 'Təsdiq', handled_by = ?, handled_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (self.current_user["username"], handled_at, integer(parts[2])),
+                )
+                audit(self.current_user["username"], "booking_request.converted", "booking_request", parts[2], booking_id)
+                return self.send_json({"guest_id": guest_id, "booking_id": booking_id}, 201)
+
             if path == "/api/payments":
                 if not self.require_auth(MONEY_ROLES):
                     return
