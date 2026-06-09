@@ -485,7 +485,7 @@ function applyExpenseFilter() {
 function renderRequests() {
   buildTable(
     "#requestTable",
-    ["Tarix", "Ad", "Telefon", "Tarix aralığı", "Nəfər", "Status", "Əməliyyat"],
+    ["Tarix", "Ad", "Telefon", "Tarix aralığı", "Nəfər", "Status", "Qəbul edən", "Əməliyyat"],
     state.requests.map((r) => `
       <tr>
         <td>${r.created_at.slice(0, 10)}</td>
@@ -494,6 +494,7 @@ function renderRequests() {
         <td>${r.check_in || "–"} → ${r.check_out || "–"}</td>
         <td>${r.people_count}</td>
         <td><span class="status ${r.status}">${escapeHtml(r.status)}</span></td>
+        <td>${r.handled_by ? `<strong>${escapeHtml(r.handled_by)}</strong><br><small>${escapeHtml((r.handled_at || "").slice(0, 16).replace("T", " "))}</small>` : "–"}</td>
         <td class="actions">
           <button data-req-status="${r.id}:Baxılır">Baxılır</button>
           <button data-req-status="${r.id}:Təsdiq">Təsdiq</button>

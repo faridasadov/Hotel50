@@ -69,6 +69,31 @@ class Hotel50ApiTests(unittest.TestCase):
         })
         self.assertEqual(status, 201, data.decode("utf-8"))
 
+    def test_request_status_tracks_handler(self):
+        status, _, data = self.request("POST", "/api/public/booking-requests", {
+            "full_name": "Request Guest",
+            "phone": "+994501234567",
+            "check_in": "2026-06-15",
+            "check_out": "2026-06-16",
+            "people_count": 1,
+            "note": "",
+        })
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        request_id = json.loads(data)["id"]
+
+        reception = self.login("reception", "reception123")
+        status, _, data = self.request("PATCH", f"/api/booking-requests/{request_id}/status", {
+            "status": "Təsdiq",
+        }, headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+
+        status, _, data = self.request("GET", "/api/booking-requests", headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        request_row = next(item for item in json.loads(data) if item["id"] == request_id)
+        self.assertEqual(request_row["status"], "Təsdiq")
+        self.assertEqual(request_row["handled_by"], "reception")
+        self.assertTrue(request_row["handled_at"])
+
     def test_role_permissions_are_separated(self):
         reception = self.login("reception", "reception123")
         accounting = self.login("accounting", "accounting123")

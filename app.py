@@ -130,6 +130,8 @@ def init_db():
               people_count INTEGER NOT NULL DEFAULT 1,
               note TEXT DEFAULT '',
               status TEXT NOT NULL DEFAULT 'Yeni',
+              handled_by TEXT DEFAULT '',
+              handled_at TEXT DEFAULT '',
               created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -185,6 +187,8 @@ def init_db():
             "ALTER TABLE bookings ADD COLUMN late_fee REAL NOT NULL DEFAULT 0",
             "ALTER TABLE bookings ADD COLUMN actual_check_out_at TEXT DEFAULT ''",
             "ALTER TABLE guest_documents ADD COLUMN storage_type TEXT NOT NULL DEFAULT 'text'",
+            "ALTER TABLE booking_requests ADD COLUMN handled_by TEXT DEFAULT ''",
+            "ALTER TABLE booking_requests ADD COLUMN handled_at TEXT DEFAULT ''",
         ]:
             try:
                 db.execute(sql)
@@ -1514,9 +1518,10 @@ class Handler(SimpleHTTPRequestHandler):
                 status = str(data.get("status") or "")
                 if status not in {"Yeni", "Baxılır", "Təsdiq", "İmtina"}:
                     return self.send_error_json("Status düzgün deyil", 400)
+                handled_at = current_local_time().isoformat()
                 execute(
-                    "UPDATE booking_requests SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (status, integer(parts[2])),
+                    "UPDATE booking_requests SET status = ?, handled_by = ?, handled_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (status, self.current_user["username"], handled_at, integer(parts[2])),
                 )
                 audit(self.current_user["username"], f"booking_request.{status}", "booking_request", parts[2])
                 return self.send_json({"ok": True})
