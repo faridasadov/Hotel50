@@ -3,106 +3,472 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hotel 50 Rezervasiya Sorğusu</title>
-    <link rel="stylesheet" href="styles.css" />
+    <title>Hotel 50 — Rezervasiya Sorğusu</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Hanken+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --accent:    #BE9856;
+        --accent-2:  #A07D41;
+        --brand:     #123C33;
+        --ink:       #0E1A12;
+        --serif:     'Marcellus', Georgia, serif;
+        --sans:      'Hanken Grotesk', system-ui, sans-serif;
+        --ease-fig:  cubic-bezier(.25,.46,.45,.94);
+        --ease-out:  cubic-bezier(.22,.68,0,1.2);
+      }
+
+      html { scroll-behavior: smooth; }
       body {
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        padding: 24px;
-        background:
-          linear-gradient(160deg, rgba(6,42,32,.82), rgba(16,24,20,.68)),
-          url("https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Shusha_general_view.jpg/1280px-Shusha_general_view.jpg");
-        background-position: center;
+        font-family: var(--sans);
+        min-height: 100svh;
+        background: var(--ink);
+        color: #fff;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+        cursor: none;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ── Custom cursor ─────────────────────── */
+      .cursor-dot {
+        position: fixed; top: 0; left: 0;
+        width: 8px; height: 8px;
+        background: #fff; border-radius: 50%;
+        transform: translate(-50%,-50%);
+        pointer-events: none; z-index: 9999;
+        mix-blend-mode: exclusion;
+        transition: width .3s var(--ease-out), height .3s var(--ease-out);
+      }
+      .cursor-ring {
+        position: fixed; top: 0; left: 0;
+        width: 36px; height: 36px;
+        border: 1px solid rgba(255,255,255,.45);
+        border-radius: 50%;
+        transform: translate(-50%,-50%);
+        pointer-events: none; z-index: 9998;
+        transition: width .3s var(--ease-out), height .3s var(--ease-out), border-color .3s;
+      }
+      body.ch .cursor-dot  { width: 14px; height: 14px; }
+      body.ch .cursor-ring { width: 52px; height: 52px; border-color: var(--accent); }
+      @media (hover: none) { .cursor-dot, .cursor-ring { display: none; } body { cursor: auto; } }
+
+      /* ── Background ────────────────────────── */
+      .page-bg {
+        position: fixed; inset: 0; z-index: 0;
+        background-image: url("https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Shusha_general_view.jpg/1280px-Shusha_general_view.jpg");
         background-size: cover;
+        background-position: center 30%;
+        animation: bgIn 1.4s var(--ease-fig) both;
       }
-      .public-shell {
-        width: min(840px, 100%);
-        background: rgba(255,255,255,.96);
-        border: 1px solid rgba(190,152,86,.34);
-        border-radius: 6px;
-        box-shadow: var(--shadow-modal);
-        overflow: hidden;
+      @keyframes bgIn {
+        from { transform: scale(1.08); opacity: .3; }
+        to   { transform: scale(1);    opacity: 1; }
       }
-      .public-head {
-        padding: 28px 28px 8px;
+      .page-overlay {
+        position: fixed; inset: 0; z-index: 1;
+        background: linear-gradient(160deg,
+          rgba(8,22,15,.88) 0%,
+          rgba(8,22,15,.72) 50%,
+          rgba(8,22,15,.94) 100%
+        );
       }
-      .public-head h1 {
+      .page-grain {
+        position: fixed; inset: 0; z-index: 2;
+        opacity: .035;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        pointer-events: none;
+      }
+
+      /* ── Nav ───────────────────────────────── */
+      nav {
+        position: relative; z-index: 10;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 28px 52px;
+        animation: navIn .8s .15s var(--ease-fig) both;
+      }
+      @keyframes navIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to   { opacity: 1; transform: none; }
+      }
+      .nav-logo {
         font-family: var(--serif);
-        font-size: 38px;
+        font-size: 20px; letter-spacing: .08em;
+        color: #fff; text-decoration: none;
+        display: flex; align-items: center; gap: 12px;
+      }
+      .nav-bar {
+        width: 28px; height: 1.5px; background: var(--accent);
+        transform-origin: left;
+        animation: barIn .7s .5s var(--ease-out) both;
+      }
+      @keyframes barIn {
+        from { transform: scaleX(0); }
+        to   { transform: scaleX(1); }
+      }
+      .nav-back {
+        font-size: 11px; font-weight: 500;
+        letter-spacing: .18em; text-transform: uppercase;
+        color: rgba(255,255,255,.5); text-decoration: none;
+        display: flex; align-items: center; gap: 8px;
+        transition: color .22s;
+      }
+      .nav-back svg { transition: transform .22s var(--ease-fig); }
+      .nav-back:hover { color: rgba(255,255,255,.9); }
+      .nav-back:hover svg { transform: translateX(-4px); }
+
+      /* ── Page content ──────────────────────── */
+      .page-body {
+        position: relative; z-index: 10;
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px 52px 60px;
+      }
+
+      /* ── Form card ─────────────────────────── */
+      .form-card {
+        width: min(560px, 100%);
+        background: rgba(8,18,12,.82);
+        border: 1px solid rgba(190,152,86,.2);
+        border-radius: 4px;
+        backdrop-filter: blur(24px);
+        overflow: hidden;
+        box-shadow: 0 48px 96px -32px rgba(0,0,0,.7);
+        animation: cardIn .9s .35s var(--ease-fig) both;
+      }
+      @keyframes cardIn {
+        from { opacity: 0; transform: translateY(28px) scale(.98); }
+        to   { opacity: 1; transform: none; }
+      }
+
+      .card-head {
+        padding: 40px 44px 28px;
+        border-bottom: 1px solid rgba(190,152,86,.12);
+      }
+      .card-eyebrow {
+        font-size: 10px; font-weight: 700;
+        letter-spacing: .34em; text-transform: uppercase;
+        color: var(--accent);
+        display: flex; align-items: center; gap: 10px;
+        margin-bottom: 16px;
+      }
+      .card-eyebrow::before {
+        content: ""; display: block;
+        width: 20px; height: 1px; background: var(--accent);
+      }
+      .card-head h1 {
+        font-family: var(--serif);
+        font-size: 36px; font-weight: 400;
+        color: #fff; line-height: 1.05;
+        margin-bottom: 10px;
+      }
+      .card-head p {
+        font-size: 13.5px; font-weight: 300;
+        color: rgba(255,255,255,.44); line-height: 1.65;
+      }
+
+      /* ── Form ──────────────────────────────── */
+      form {
+        padding: 32px 44px 36px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+      .full { grid-column: 1 / -1; }
+
+      label {
+        display: flex; flex-direction: column; gap: 8px;
+        font-size: 10px; font-weight: 600;
+        letter-spacing: .2em; text-transform: uppercase;
+        color: rgba(255,255,255,.4);
+      }
+      input, select {
+        width: 100%;
+        background: rgba(255,255,255,.05);
+        border: 1px solid rgba(255,255,255,.1);
+        border-radius: 2px;
+        padding: 13px 14px;
+        color: #fff;
+        font-size: 14px;
+        font-family: var(--sans);
         font-weight: 400;
+        transition: border-color .2s var(--ease-fig), box-shadow .2s, background .2s;
+        outline: none;
+        -webkit-appearance: none;
       }
-      .public-head p {
-        margin: 10px 0 0;
-        color: var(--muted);
-        font-size: 15px;
+      input::placeholder { color: rgba(255,255,255,.2); }
+      input:focus, select:focus {
+        border-color: rgba(190,152,86,.55);
+        background: rgba(255,255,255,.08);
+        box-shadow: 0 0 0 3px rgba(190,152,86,.12);
       }
-      .public-form {
-        margin: 0;
-        border: 0;
-        border-top: 1px solid var(--line);
-        border-radius: 0;
+      select { cursor: pointer; }
+      select option { background: #0e1a12; color: #fff; }
+
+      /* date input calendar icon color on dark */
+      input[type="date"]::-webkit-calendar-picker-indicator {
+        filter: invert(.6) sepia(1) saturate(2) hue-rotate(5deg);
+        cursor: pointer;
+        opacity: .6;
       }
-      .public-status {
-        min-height: 20px;
-        padding: 0 28px 28px;
-        color: var(--brand);
-        font-weight: 600;
+      input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+      .submit-wrap {
+        grid-column: 1 / -1;
+        margin-top: 4px;
+      }
+      button[type="submit"] {
+        width: 100%;
+        padding: 16px 20px;
+        background: var(--accent);
+        border: none; border-radius: 2px;
+        color: #fff;
+        font-family: var(--sans);
+        font-size: 11px; font-weight: 700;
+        letter-spacing: .24em; text-transform: uppercase;
+        cursor: pointer;
+        position: relative; overflow: hidden;
+        transition: background .25s var(--ease-fig), transform .22s var(--ease-fig), box-shadow .22s;
+      }
+      button[type="submit"]::before {
+        content: "";
+        position: absolute; inset: 0;
+        background: rgba(255,255,255,.12);
+        transform: translateX(-110%) skewX(-10deg);
+        transition: transform .45s var(--ease-fig);
+      }
+      button[type="submit"]:hover::before { transform: translateX(110%) skewX(-10deg); }
+      button[type="submit"]:hover {
+        background: var(--accent-2);
+        transform: translateY(-1px);
+        box-shadow: 0 12px 28px -8px rgba(190,152,86,.4);
+      }
+      button[type="submit"]:disabled {
+        opacity: .5; cursor: not-allowed; transform: none; box-shadow: none;
+      }
+
+      /* ── Status message ────────────────────── */
+      .status-msg {
+        min-height: 0;
+        padding: 0 44px;
+        overflow: hidden;
+        max-height: 0;
+        transition: max-height .4s var(--ease-fig), padding .4s var(--ease-fig);
+      }
+      .status-msg.show {
+        max-height: 80px;
+        padding: 0 44px 24px;
+      }
+      .status-inner {
+        padding: 14px 18px;
+        border-radius: 2px;
+        font-size: 13px; font-weight: 500;
+        letter-spacing: .02em;
+      }
+      .status-inner.ok {
+        background: rgba(62,107,76,.25);
+        border: 1px solid rgba(62,107,76,.4);
+        color: #7ec895;
+      }
+      .status-inner.err {
+        background: rgba(155,70,54,.25);
+        border: 1px solid rgba(155,70,54,.4);
+        color: #f5a090;
+      }
+
+      /* ── Footer ────────────────────────────── */
+      footer {
+        position: relative; z-index: 10;
+        padding: 20px 52px;
+        border-top: 1px solid rgba(255,255,255,.05);
+        display: flex; align-items: center; justify-content: space-between;
+      }
+      footer span {
+        font-family: var(--serif);
+        font-size: 13px; color: rgba(255,255,255,.2);
+        letter-spacing: .06em;
+      }
+      footer p { font-size: 11px; color: rgba(255,255,255,.14); letter-spacing: .03em; }
+
+      /* ── Responsive ────────────────────────── */
+      @media (max-width: 620px) {
+        nav, .page-body, footer { padding-left: 20px; padding-right: 20px; }
+        .card-head { padding: 30px 24px 22px; }
+        form { padding: 24px; gap: 16px; grid-template-columns: 1fr; }
+        .full, .submit-wrap { grid-column: 1; }
+        .status-msg { padding-left: 24px; padding-right: 24px; }
+        .status-msg.show { padding: 0 24px 20px; }
       }
     </style>
   </head>
   <body>
-    <main class="public-shell">
-      <div class="public-head">
-        <p class="eyebrow">Hotel 50</p>
-        <h1>Rezervasiya sorğusu</h1>
-        <p>Tarixləri və əlaqə məlumatını göndərin. Sorğu resepsion panelinə düşəcək.</p>
+    <div class="cursor-dot"></div>
+    <div class="cursor-ring"></div>
+
+    <div class="page-bg"></div>
+    <div class="page-overlay"></div>
+    <div class="page-grain"></div>
+
+    <nav>
+      <a class="nav-logo" href="/">
+        <span class="nav-bar"></span>
+        Hotel 50
+      </a>
+      <a class="nav-back" href="/">
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+          <path d="M15 6H1M7 1L1 6l6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Geri
+      </a>
+    </nav>
+
+    <div class="page-body">
+      <div class="form-card">
+        <div class="card-head">
+          <div class="card-eyebrow">Qonaqlar üçün</div>
+          <h1>Rezervasiya<br>Sorğusu</h1>
+          <p>Tarixləri və əlaqə məlumatını göndərin.<br>Resepsion ən qısa zamanda sizinlə əlaqə saxlayacaq.</p>
+        </div>
+
+        <form id="publicRequestForm">
+          <label>
+            Ad Soyad
+            <input name="full_name" required placeholder="Məsələn: Əli Əliyev" />
+          </label>
+          <label>
+            Telefon
+            <input name="phone" placeholder="+994 50 000 00 00" />
+          </label>
+          <label>
+            Giriş tarixi
+            <input name="check_in" type="date" required />
+          </label>
+          <label>
+            Çıxış tarixi
+            <input name="check_out" type="date" required />
+          </label>
+          <label>
+            Otaq kateqoriyası
+            <select name="room_category" id="roomCategorySelect">
+              <option value="">— Fərq etmir —</option>
+            </select>
+          </label>
+          <label>
+            Nəfər sayı
+            <input name="people_count" type="number" min="1" value="1" />
+          </label>
+          <label>
+            Qeyd
+            <input name="note" placeholder="Əlavə istəklər..." />
+          </label>
+          <div class="submit-wrap">
+            <button type="submit">
+              Sorğunu göndər
+            </button>
+          </div>
+        </form>
+
+        <div class="status-msg" id="statusMsg">
+          <div class="status-inner" id="statusInner"></div>
+        </div>
       </div>
+    </div>
 
-      <form id="publicRequestForm" class="form-grid public-form">
-        <label>Ad soyad<input name="full_name" required /></label>
-        <label>Telefon<input name="phone" /></label>
-        <label>Giriş<input name="check_in" type="date" /></label>
-        <label>Çıxış<input name="check_out" type="date" /></label>
-        <label>Nəfər<input name="people_count" type="number" min="1" value="1" /></label>
-        <label class="wide">Qeyd<input name="note" /></label>
-        <button type="submit">Sorğunu göndər</button>
-      </form>
-
-      <div id="publicStatus" class="public-status"></div>
-    </main>
+    <footer>
+      <span>Hotel 50</span>
+      <p>© 2026 Hotel 50, Xankəndi &nbsp;·&nbsp; Powered by <a href="https://github.com/faridasadov" target="_blank" rel="noopener" style="color:rgba(255,255,255,.35);text-decoration:none;">faridasadov</a></p>
+    </footer>
 
     <script>
-      const APP_BASE = window.location.pathname.startsWith("/hotel50/") ? "/hotel50" : "";
-      const appPath = (path) => `${APP_BASE}${path}`;
-      const form = document.getElementById("publicRequestForm");
-      const statusEl = document.getElementById("publicStatus");
-      const today = new Date().toISOString().slice(0, 10);
-      form.querySelector('[name="check_in"]').value = today;
+      // ── Cursor ──────────────────────────────────────────────────
+      const dot  = document.querySelector('.cursor-dot');
+      const ring = document.querySelector('.cursor-ring');
+      let mx = 0, my = 0, rx = 0, ry = 0;
+      document.addEventListener('mousemove', e => {
+        mx = e.clientX; my = e.clientY;
+        dot.style.transform = `translate(${mx}px,${my}px) translate(-50%,-50%)`;
+      });
+      (function loop() {
+        rx += (mx - rx) * .12;
+        ry += (my - ry) * .12;
+        ring.style.transform = `translate(${rx}px,${ry}px) translate(-50%,-50%)`;
+        requestAnimationFrame(loop);
+      })();
+      document.querySelectorAll('a,button,input,select').forEach(el => {
+        el.addEventListener('mouseenter', () => document.body.classList.add('ch'));
+        el.addEventListener('mouseleave', () => document.body.classList.remove('ch'));
+      });
 
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        statusEl.textContent = "";
-        const button = form.querySelector('button[type="submit"]');
-        button.disabled = true;
+      // ── Form ────────────────────────────────────────────────────
+      const APP_BASE = window.location.pathname.startsWith('/hotel50/') ? '/hotel50' : '';
+      const form     = document.getElementById('publicRequestForm');
+
+      // Load room categories
+      (async () => {
+        try {
+          const cats = await fetch(`${APP_BASE}/api/public/room-categories`).then(r => r.json());
+          const sel  = document.getElementById('roomCategorySelect');
+          if (Array.isArray(cats)) {
+            cats.forEach(c => {
+              const opt = document.createElement('option');
+              opt.value = c.name;
+              opt.textContent = c.base_price > 0
+                ? `${c.name} — ${Math.round(c.base_price)} AZN/gecə`
+                : c.name;
+              sel.appendChild(opt);
+            });
+          }
+        } catch(_) {}
+      })();
+      const msgWrap  = document.getElementById('statusMsg');
+      const msgInner = document.getElementById('statusInner');
+      const today    = new Date().toISOString().slice(0, 10);
+      form.querySelector('[name="check_in"]').value   = today;
+      form.querySelector('[name="check_in"]').min    = today;
+      form.querySelector('[name="check_out"]').min   = today;
+
+      form.querySelector('[name="check_in"]').addEventListener('change', function() {
+        const coEl = form.querySelector('[name="check_out"]');
+        if (coEl.value && coEl.value <= this.value) coEl.value = '';
+        coEl.min = this.value || today;
+      });
+
+      function showStatus(text, type) {
+        msgInner.textContent = text;
+        msgInner.className   = 'status-inner ' + type;
+        msgWrap.classList.add('show');
+      }
+
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        msgWrap.classList.remove('show');
+        const btn = form.querySelector('button[type="submit"]');
+        btn.disabled = true;
         try {
           const payload = Object.fromEntries(new FormData(form).entries());
-          const res = await fetch(appPath("/api/public/booking-requests"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+          const res  = await fetch(`${APP_BASE}/api/public/booking-requests`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.error || "Server xətası");
+          if (!res.ok) throw new Error(data.error || 'Server xətası');
           form.reset();
-          form.querySelector('[name="check_in"]').value = today;
-          form.querySelector('[name="people_count"]').value = "1";
-          statusEl.textContent = "Sorğu göndərildi. Sizinlə əlaqə saxlanılacaq.";
-        } catch (error) {
-          statusEl.textContent = error.message;
+          form.querySelector('[name="check_in"]').value    = today;
+          form.querySelector('[name="check_in"]').min      = today;
+          form.querySelector('[name="check_out"]').min     = today;
+          form.querySelector('[name="people_count"]').value = '1';
+          showStatus('Sorğu göndərildi. Sizinlə ən qısa zamanda əlaqə saxlanılacaq.', 'ok');
+        } catch (err) {
+          showStatus(err.message, 'err');
         } finally {
-          button.disabled = false;
+          btn.disabled = false;
         }
       });
     </script>

@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import quote, urlparse, parse_qs
+from html import escape as html_escape
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
@@ -35,6 +36,7 @@ OPS_ROLES = {"Admin", "Reception"}
 MONEY_ROLES = {"Admin", "Accounting"}
 CHECKIN_HOUR = 14
 CHECKOUT_HOUR = 12
+MAX_DOC_SIZE = 10 * 1024 * 1024  # 10 MB (base64 string length limit)
 
 
 # ─────────────────────── DB ───────────────────────
@@ -178,6 +180,13 @@ def init_db():
               expires_at TEXT NOT NULL,
               FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS room_categories (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL UNIQUE,
+              description TEXT DEFAULT '',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
             """
         )
 
@@ -189,6 +198,9 @@ def init_db():
             "ALTER TABLE guest_documents ADD COLUMN storage_type TEXT NOT NULL DEFAULT 'text'",
             "ALTER TABLE booking_requests ADD COLUMN handled_by TEXT DEFAULT ''",
             "ALTER TABLE booking_requests ADD COLUMN handled_at TEXT DEFAULT ''",
+            "ALTER TABLE booking_requests ADD COLUMN room_category TEXT DEFAULT ''",
+            "ALTER TABLE room_categories ADD COLUMN base_price REAL DEFAULT 0",
+            "ALTER TABLE room_categories ADD COLUMN amenities TEXT DEFAULT '[]'",
         ]:
             try:
                 db.execute(sql)
@@ -196,6 +208,34 @@ def init_db():
                 pass
 
         db.execute("DROP TABLE IF EXISTS hotels")
+
+        cat_count = db.execute("SELECT COUNT(*) AS c FROM room_categories").fetchone()["c"]
+        if cat_count == 0:
+            for name, desc, price, amenities in [
+                ("Standard", "Standart otaq",              45,  '["wifi","bath","tv","ac"]'),
+                ("Superior", "Təkmilləşdirilmiş otaq",     65,  '["wifi","bath","tv","ac","minibar"]'),
+                ("Deluxe",   "Deluxe otaq",                85,  '["wifi","bath","tv","ac","minibar","cityview"]'),
+                ("Suite",    "Lüks süit",                  120, '["wifi","bath","tv","ac","minibar","cityview","breakfast","balcony"]'),
+                ("Family",   "Ailə otağı",                 90,  '["wifi","bath","tv","ac","breakfast","roomservice"]'),
+            ]:
+                db.execute(
+                    "INSERT OR IGNORE INTO room_categories (name, description, base_price, amenities) VALUES (?, ?, ?, ?)",
+                    (name, desc, price, amenities),
+                )
+        else:
+            # One-time: seed amenities/prices for existing categories that are still at defaults
+            defaults = {
+                "Standard": (45,  '["wifi","bath","tv","ac"]'),
+                "Superior": (65,  '["wifi","bath","tv","ac","minibar"]'),
+                "Deluxe":   (85,  '["wifi","bath","tv","ac","minibar","cityview"]'),
+                "Suite":    (120, '["wifi","bath","tv","ac","minibar","cityview","breakfast","balcony"]'),
+                "Family":   (90,  '["wifi","bath","tv","ac","breakfast","roomservice"]'),
+            }
+            for cat_name, (price, amenities) in defaults.items():
+                db.execute(
+                    "UPDATE room_categories SET base_price = ?, amenities = ? WHERE name = ? AND (amenities = '[]' OR amenities IS NULL)",
+                    (price, amenities, cat_name),
+                )
 
         # Indexes for performance
         for idx_sql in [
@@ -500,6 +540,15 @@ def room_list():
     )
 
 
+def parse_categories(cats):
+    for c in cats:
+        try:
+            c["amenities"] = json.loads(c.get("amenities") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            c["amenities"] = []
+    return cats
+
+
 def document_payload(data, storage_type):
     if storage_type == "base64":
         return base64.b64decode(str(data or "").encode("ascii"))
@@ -518,7 +567,7 @@ def debtors():
           JOIN guests g ON g.id = b.guest_id
           JOIN rooms r ON r.id = b.room_id
           LEFT JOIN payments p ON p.booking_id = b.id
-          WHERE b.status IN ('Reserved', 'CheckedIn')
+          WHERE b.status IN ('Reserved', 'CheckedIn', 'CheckedOut')
           GROUP BY b.id
         ) items
         WHERE balance > 0
@@ -563,7 +612,7 @@ def summary():
     money_row = row(
         """
         SELECT
-          COALESCE(SUM(b.total_amount), 0) AS total_amount,
+          COALESCE(SUM(b.total_amount + COALESCE(b.late_fee, 0)), 0) AS total_amount,
           COALESCE(SUM(payments.paid), 0) AS paid_amount
         FROM bookings b
         LEFT JOIN (
@@ -779,6 +828,14 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 return self.send_json(summary())
 
+            if path == "/api/public/room-categories":
+                return self.send_json(parse_categories(rows("SELECT * FROM room_categories ORDER BY name")))
+
+            if path == "/api/room-categories":
+                if not self.require_auth():
+                    return
+                return self.send_json(parse_categories(rows("SELECT * FROM room_categories ORDER BY name")))
+
             if path == "/api/rooms":
                 if not self.require_auth(ROLES):
                     return
@@ -830,7 +887,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json(rows("SELECT * FROM booking_requests ORDER BY created_at DESC"))
 
             if path == "/api/bookings":
-                if not self.require_auth(OPS_ROLES):
+                if not self.require_auth():
                     return
                 q = qs.get("q", [""])[0].strip()
                 status_f = qs.get("status", [""])[0].strip()
@@ -908,12 +965,12 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 output = io.StringIO()
                 writer = csv.writer(output)
-                writer.writerow(["type", "date", "name", "room_or_category", "amount", "paid", "balance", "note"])
+                writer.writerow(["type", "date", "name", "room_or_category", "amount", "late_fee", "paid", "balance", "note"])
                 for b in booking_select():
                     writer.writerow(["booking", b["check_in"], b["guest_name"], b["room_number"],
-                                     b["total_amount"] + b["late_fee"], b["paid_amount"], b["balance"], b["note"]])
+                                     b["total_amount"], b["late_fee"], b["paid_amount"], b["balance"], b["note"]])
                 for e in rows("SELECT * FROM expenses ORDER BY spent_at DESC"):
-                    writer.writerow(["expense", e["spent_at"], "", e["category"], e["amount"], "", "", e["note"]])
+                    writer.writerow(["expense", e["spent_at"], "", e["category"], e["amount"], "", "", "", e["note"]])
                 return self.send_text(output.getvalue(), "text/csv; charset=utf-8", filename="hotel50-report.csv")
 
             # /api/receipts/:id
@@ -940,13 +997,13 @@ class Handler(SimpleHTTPRequestHandler):
                 h1{{color:#0f766e}}</style></head>
                 <body><div class='box'><h1>Hotel 50</h1><p style='color:#667085'>Ödəniş qəbzi</p><dl>
                 <dt>Qəbz №</dt><dd>#{payment['id']}</dd>
-                <dt>Qonaq</dt><dd>{payment['guest_name']}</dd>
-                <dt>Otaq</dt><dd>{payment['room_number']}</dd>
-                <dt>Qalma</dt><dd>{payment['check_in']} → {payment['check_out']}</dd>
-                <dt>Ödəniş tarixi</dt><dd>{payment['paid_at']}</dd>
+                <dt>Qonaq</dt><dd>{html_escape(str(payment['guest_name'] or ''))}</dd>
+                <dt>Otaq</dt><dd>{html_escape(str(payment['room_number'] or ''))}</dd>
+                <dt>Qalma</dt><dd>{html_escape(str(payment['check_in'] or ''))} → {html_escape(str(payment['check_out'] or ''))}</dd>
+                <dt>Ödəniş tarixi</dt><dd>{html_escape(str(payment['paid_at'] or ''))}</dd>
                 <dt>Məbləğ</dt><dd><strong>{money(payment['amount'])} AZN</strong></dd>
-                <dt>Metod</dt><dd>{payment['method']}</dd>
-                {f"<dt>Qeyd</dt><dd>{payment['note']}</dd>" if payment.get('note') else ""}
+                <dt>Metod</dt><dd>{html_escape(str(payment['method'] or ''))}</dd>
+                {f"<dt>Qeyd</dt><dd>{html_escape(str(payment['note']))}</dd>" if payment.get('note') else ""}
                 </dl><button onclick='window.print()' style='padding:10px 20px;background:#0f766e;color:#fff;border:0;border-radius:6px;cursor:pointer;font-size:15px'>Çap et</button>
                 </div></body></html>"""
                 return self.send_text(html, "text/html; charset=utf-8")
@@ -961,6 +1018,15 @@ class Handler(SimpleHTTPRequestHandler):
                 content = document_payload(doc["data"], doc.get("storage_type") or "text")
                 content_type = doc.get("content_type") or "application/octet-stream"
                 return self.send_bytes(content, content_type)
+
+            if path == "/managepage":
+                content = (PUBLIC / "app.html").read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+                return
 
             return super().do_GET()
         except Exception as exc:
@@ -1007,7 +1073,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if not full_name:
                     return self.send_error_json("Ad soyad tələb olunur", 400)
                 request_id = execute(
-                    "INSERT INTO booking_requests (full_name, phone, check_in, check_out, people_count, note) VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO booking_requests (full_name, phone, check_in, check_out, people_count, note, room_category) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (
                         full_name,
                         str(data.get("phone") or "").strip(),
@@ -1015,6 +1081,7 @@ class Handler(SimpleHTTPRequestHandler):
                         str(data.get("check_out") or ""),
                         integer(data.get("people_count"), 1),
                         str(data.get("note") or ""),
+                        str(data.get("room_category") or ""),
                     ),
                 )
                 audit("public", "booking_request.created", "booking_request", request_id)
@@ -1044,6 +1111,21 @@ class Handler(SimpleHTTPRequestHandler):
                 )
                 audit(self.current_user["username"], "user.created", "user", user_id)
                 return self.send_json({"id": user_id}, 201)
+
+            if path == "/api/room-categories":
+                if not self.require_auth({"Admin"}):
+                    return
+                name = str(data.get("name") or "").strip()
+                if not name:
+                    return self.send_error_json("Kateqoriya adı tələb olunur", 400)
+                amenities = data.get("amenities") or []
+                amenities_str = json.dumps(list(amenities) if isinstance(amenities, list) else [])
+                cat_id = execute(
+                    "INSERT INTO room_categories (name, description, base_price, amenities) VALUES (?, ?, ?, ?)",
+                    (name, str(data.get("description") or ""), money(data.get("base_price")), amenities_str),
+                )
+                audit(self.current_user["username"], "room_category.created", "room_category", cat_id)
+                return self.send_json({"id": cat_id}, 201)
 
             if path == "/api/rooms":
                 if not self.require_auth({"Admin"}):
@@ -1104,6 +1186,11 @@ class Handler(SimpleHTTPRequestHandler):
                 ok_d, msg_d = validate_dates(ci, co)
                 if not ok_d:
                     return self.send_error_json(msg_d, 400)
+                room_status = row("SELECT cleaning_status FROM rooms WHERE id = ?", (integer(data.get("room_id")),))
+                if room_status and room_status["cleaning_status"] not in ("Təmiz", None, ""):
+                    return self.send_error_json(
+                        f"Bu otaq hazırda '{room_status['cleaning_status']}' statusundadır və bronlana bilməz", 400
+                    )
                 ok, message = has_capacity(integer(data.get("room_id")), ci, co, integer(data.get("people_count"), 1))
                 if not ok:
                     return self.send_error_json(message, 400)
@@ -1128,6 +1215,8 @@ class Handler(SimpleHTTPRequestHandler):
                 request_item = row("SELECT * FROM booking_requests WHERE id = ?", (integer(parts[2]),))
                 if not request_item:
                     return self.send_error_json("Sorğu tapılmadı", 404)
+                if request_item["status"] in ("Təsdiq", "İmtina"):
+                    return self.send_error_json(f"Bu sorğu artıq '{request_item['status']}' statusundadır", 400)
                 ci = str(data.get("check_in") or request_item.get("check_in") or "")
                 co = str(data.get("check_out") or request_item.get("check_out") or "")
                 ok_d, msg_d = validate_dates(ci, co)
@@ -1135,6 +1224,11 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.send_error_json(msg_d, 400)
                 room_id = integer(data.get("room_id"))
                 people_count = integer(data.get("people_count"), integer(request_item.get("people_count"), 1))
+                conv_room_status = row("SELECT cleaning_status FROM rooms WHERE id = ?", (room_id,))
+                if conv_room_status and conv_room_status["cleaning_status"] not in ("Təmiz", None, ""):
+                    return self.send_error_json(
+                        f"Bu otaq hazırda '{conv_room_status['cleaning_status']}' statusundadır və bronlana bilməz", 400
+                    )
                 ok, message = has_capacity(room_id, ci, co, people_count)
                 if not ok:
                     return self.send_error_json(message, 400)
@@ -1173,6 +1267,11 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/payments":
                 if not self.require_auth(MONEY_ROLES):
                     return
+                bk = row("SELECT status FROM bookings WHERE id = ?", (integer(data.get("booking_id")),))
+                if not bk:
+                    return self.send_error_json("Bron tapılmadı", 404)
+                if bk["status"] == "Cancelled":
+                    return self.send_error_json("Ləğv edilmiş bron üçün ödəniş əlavə etmək olmaz", 400)
                 payment_id = execute(
                     "INSERT INTO payments (booking_id, amount, method, paid_at, note) VALUES (?, ?, ?, ?, ?)",
                     (
@@ -1244,6 +1343,10 @@ class Handler(SimpleHTTPRequestHandler):
                 storage_type = "base64" if data_base64 else "text"
                 if not raw_data:
                     return self.send_error_json("Sənəd faylı boşdur", 400)
+                if len(raw_data) > MAX_DOC_SIZE:
+                    return self.send_error_json(
+                        f"Fayl həcmi limitdən böyükdür (max {MAX_DOC_SIZE // (1024*1024)} MB)", 413
+                    )
                 doc_id = execute(
                     "INSERT INTO guest_documents (guest_id, title, file_name, content_type, data, storage_type) VALUES (?, ?, ?, ?, ?, ?)",
                     (
@@ -1273,6 +1376,21 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             data = json_body(self)
             parts = path.strip("/").split("/")
+
+            if len(parts) == 3 and parts[:2] == ["api", "room-categories"]:
+                if not self.require_auth({"Admin"}):
+                    return
+                name = str(data.get("name") or "").strip()
+                if not name:
+                    return self.send_error_json("Kateqoriya adı tələb olunur", 400)
+                amenities = data.get("amenities") or []
+                amenities_str = json.dumps(list(amenities) if isinstance(amenities, list) else [])
+                execute(
+                    "UPDATE room_categories SET name = ?, description = ?, base_price = ?, amenities = ? WHERE id = ?",
+                    (name, str(data.get("description") or ""), money(data.get("base_price")), amenities_str, integer(parts[2])),
+                )
+                audit(self.current_user["username"], "room_category.updated", "room_category", parts[2])
+                return self.send_json({"ok": True})
 
             if len(parts) == 3 and parts[:2] == ["api", "rooms"]:
                 if not self.require_auth({"Admin"}):
@@ -1336,13 +1454,27 @@ class Handler(SimpleHTTPRequestHandler):
                 ok_d, msg_d = validate_dates(ci, co)
                 if not ok_d:
                     return self.send_error_json(msg_d, 400)
-                status = str(data.get("status") or "Reserved")
+                existing_bk = row("SELECT status, late_fee, actual_check_out_at FROM bookings WHERE id = ?", (integer(parts[2]),))
+                if not existing_bk:
+                    return self.send_error_json("Bron tapılmadı", 404)
+                status = str(data.get("status") or existing_bk["status"])
+                if status != existing_bk["status"]:
+                    _valid_transitions = {
+                        "Reserved":   {"CheckedIn", "Cancelled"},
+                        "CheckedIn":  {"CheckedOut", "Cancelled"},
+                        "CheckedOut": set(),
+                        "Cancelled":  set(),
+                    }
+                    if status not in _valid_transitions.get(existing_bk["status"], set()):
+                        return self.send_error_json(
+                            f"'{existing_bk['status']}' statusundan '{status}' statusuna keçid mümkün deyil", 400
+                        )
                 ok, message = has_capacity(integer(data.get("room_id")), ci, co, integer(data.get("people_count"), 1), integer(parts[2]))
                 if not ok:
                     return self.send_error_json(message, 400)
-                late_fee = money(data.get("late_fee"))
-                actual_check_out_at = ""
-                if status == "CheckedOut":
+                late_fee = money(data["late_fee"]) if "late_fee" in data else money(existing_bk["late_fee"])
+                actual_check_out_at = str(existing_bk.get("actual_check_out_at") or "")
+                if status == "CheckedOut" and existing_bk["status"] != "CheckedOut":
                     booking_item = {
                         "check_out": co,
                         "room_rate": row("SELECT nightly_rate AS room_rate FROM rooms WHERE id = ?", (integer(data.get("room_id")),))["room_rate"],
@@ -1440,6 +1572,8 @@ class Handler(SimpleHTTPRequestHandler):
             parts = path.strip("/").split("/")
 
             if len(parts) == 3 and parts[:2] == ["api", "backups"]:
+                if not self.require_auth({"Admin"}):
+                    return
                 name = Path(parts[2]).name
                 target = BACKUP_DIR / name
                 if not name.startswith("hotel50-") or target.parent != BACKUP_DIR or not target.exists():
@@ -1448,12 +1582,26 @@ class Handler(SimpleHTTPRequestHandler):
                 audit(self.current_user["username"], "backup.deleted", "backup", name)
                 return self.send_json({"ok": True, "deleted": name})
 
+            if len(parts) == 3 and parts[:2] == ["api", "room-categories"]:
+                if not self.require_auth({"Admin"}):
+                    return
+                in_use = row("SELECT COUNT(*) AS c FROM rooms WHERE room_type = (SELECT name FROM room_categories WHERE id = ?)", (integer(parts[2]),))
+                if in_use and in_use["c"] > 0:
+                    return self.send_error_json("Bu kateqoriya otaqlarda istifadə olunur, silinə bilməz", 400)
+                execute("DELETE FROM room_categories WHERE id = ?", (integer(parts[2]),))
+                audit(self.current_user["username"], "room_category.deleted", "room_category", parts[2])
+                return self.send_json({"ok": True})
+
             if len(parts) == 3 and parts[:2] == ["api", "rooms"]:
+                if not self.require_auth({"Admin"}):
+                    return
                 execute("DELETE FROM rooms WHERE id = ?", (integer(parts[2]),))
                 audit(self.current_user["username"], "room.deleted", "room", parts[2])
                 return self.send_json({"ok": True})
 
             if len(parts) == 3 and parts[:2] == ["api", "guests"]:
+                if not self.require_auth(OPS_ROLES):
+                    return
                 execute("DELETE FROM guest_documents WHERE guest_id = ?", (integer(parts[2]),))
                 execute("DELETE FROM guests WHERE id = ?", (integer(parts[2]),))
                 audit(self.current_user["username"], "guest.deleted", "guest", parts[2])
@@ -1496,9 +1644,16 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"ok": True})
 
             if len(parts) == 3 and parts[:2] == ["api", "users"]:
+                if not self.require_auth({"Admin"}):
+                    return
                 uid = integer(parts[2])
                 if uid == self.current_user["id"]:
                     return self.send_error_json("Özünüzü silə bilməzsiniz", 400)
+                target_u = row("SELECT role FROM users WHERE id = ?", (uid,))
+                if target_u and target_u["role"] == "Admin":
+                    remaining = row("SELECT COUNT(*) AS c FROM users WHERE role = 'Admin' AND active = 1 AND id <> ?", (uid,))
+                    if not remaining or remaining["c"] == 0:
+                        return self.send_error_json("Sistemdə ən azı bir aktiv Admin olmalıdır", 400)
                 execute("DELETE FROM sessions WHERE user_id = ?", (uid,))
                 execute("DELETE FROM users WHERE id = ?", (uid,))
                 audit(self.current_user["username"], "user.deleted", "user", parts[2])
@@ -1535,6 +1690,17 @@ class Handler(SimpleHTTPRequestHandler):
                 )
                 if not booking_item:
                     return self.send_error_json("Bron tapılmadı", 404)
+                _valid_transitions = {
+                    "Reserved":   {"CheckedIn", "Cancelled"},
+                    "CheckedIn":  {"CheckedOut", "Cancelled"},
+                    "CheckedOut": set(),
+                    "Cancelled":  set(),
+                }
+                current_status = str(booking_item.get("status") or "")
+                if status not in _valid_transitions.get(current_status, set()):
+                    return self.send_error_json(
+                        f"'{current_status}' statusundan '{status}' statusuna keçid mümkün deyil", 400
+                    )
                 late_fee = money(booking_item.get("late_fee"))
                 actual_check_out_at = str(booking_item.get("actual_check_out_at") or "")
                 if status == "CheckedOut":
@@ -1581,6 +1747,13 @@ class Handler(SimpleHTTPRequestHandler):
                 status = str(data.get("status") or "")
                 if status not in {"Yeni", "Hazırlanır", "Çatdırıldı", "Ləğv edildi"}:
                     return self.send_error_json("Status düzgün deyil", 400)
+                current_order = row("SELECT status FROM room_orders WHERE id = ?", (integer(parts[2]),))
+                if not current_order:
+                    return self.send_error_json("Sifariş tapılmadı", 404)
+                if current_order["status"] in ("Çatdırıldı", "Ləğv edildi"):
+                    return self.send_error_json(
+                        f"Bu sifariş artıq '{current_order['status']}' statusundadır", 400
+                    )
                 execute(
                     "UPDATE room_orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                     (status, integer(parts[2])),
@@ -1593,13 +1766,13 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 data = json_body(self)
                 amount = money(data.get("late_fee"))
-                if amount != 0:
-                    return self.send_error_json("Gecikmə yalnız Admin tərəfindən sıfırlana bilər", 400)
+                if amount < 0:
+                    return self.send_error_json("Gecikmə mənfi ola bilməz", 400)
                 execute(
-                    "UPDATE bookings SET late_fee = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (integer(parts[2]),),
+                    "UPDATE bookings SET late_fee = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (amount, integer(parts[2])),
                 )
-                audit(self.current_user["username"], "booking.late_fee.cleared", "booking", parts[2])
+                audit(self.current_user["username"], "booking.late_fee.updated", "booking", parts[2], f"{amount} AZN")
                 return self.send_json({"ok": True})
 
             return self.send_error_json("Not found", 404)

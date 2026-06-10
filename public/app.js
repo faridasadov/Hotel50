@@ -3,6 +3,20 @@
 // ═══════════════════════════════════════════════════════════════
 
 const APP_BASE = window.location.pathname.startsWith("/hotel50/") ? "/hotel50" : "";
+
+const AMENITIES = [
+  { key: "wifi",        label: "Pulsuz Wi-Fi"    },
+  { key: "breakfast",   label: "Səhər yeməyi"    },
+  { key: "bath",        label: "Özəl hamam"      },
+  { key: "tv",          label: "Televizor"       },
+  { key: "ac",          label: "Kondisioner"     },
+  { key: "minibar",     label: "Mini-bar"        },
+  { key: "roomservice", label: "Otaq xidməti"    },
+  { key: "safe",        label: "Seyf"            },
+  { key: "balcony",     label: "Balkon"          },
+  { key: "cityview",    label: "Şəhər mənzərəsi" },
+  { key: "parking",     label: "Parkinq"         },
+];
 const appPath = (path) => `${APP_BASE}${path}`;
 
 // ─── API helper ──────────────────────────────────────────────
@@ -20,6 +34,7 @@ const state = {
   user: null,
   summary: {},
   rooms: [],
+  categories: [],
   guests: [],
   documents: [],
   bookings: [],
@@ -60,6 +75,16 @@ function dateOffset(days) {
 
 function daysBetween(a, b) {
   return Math.max(1, Math.round((new Date(b) - new Date(a)) / 86_400_000));
+}
+
+function estimateLateFee(booking) {
+  if (booking.status !== "CheckedIn") return 0;
+  const dueAt = new Date(booking.check_out + "T12:00:00");
+  const now = new Date();
+  if (now <= dueAt) return 0;
+  const lateHours = Math.ceil((now - dueAt) / 3_600_000);
+  const hourlyRate = Number(booking.room_rate || 0) / 24;
+  return Math.round(hourlyRate * lateHours * 100) / 100;
 }
 
 // ─── Toast ────────────────────────────────────────────────────
@@ -137,9 +162,15 @@ function applyPermissions() {
   const ef = document.querySelector("#expenseForm");
   if (ef) ef.classList.toggle("hidden", !isAccounting());
   const activeTab = document.querySelector(".tab.active");
-  if (activeTab?.classList.contains("hidden")) {
-    const nextTab = [...document.querySelectorAll(".tab")].find((el) => !el.classList.contains("hidden"));
-    if (nextTab) nextTab.click();
+  if (!activeTab || activeTab.classList.contains("hidden")) {
+    document.querySelectorAll(".tab, .panel").forEach((el) => el.classList.remove("active"));
+    const firstTab = [...document.querySelectorAll(".tab")]
+      .find((el) => !el.classList.contains("hidden"));
+    if (firstTab) {
+      firstTab.classList.add("active");
+      const panel = document.querySelector(`#${firstTab.dataset.tab}`);
+      if (panel) panel.classList.add("active");
+    }
   }
 }
 
@@ -156,6 +187,7 @@ function optionLists() {
   document.querySelector('#documentForm [name="guest_id"]').innerHTML = guestOpts;
   document.querySelector('[name="room_id"]').innerHTML = roomOpts;
   document.querySelector('[name="booking_id"]').innerHTML = state.bookings
+    .filter((b) => b.status !== "Cancelled")
     .map((b) => `<option value="${b.id}">#${b.id} ${escapeHtml(b.guest_name)} / ${escapeHtml(b.room_number)} / borc: ${fmt(b.balance)}</option>`)
     .join("");
 
@@ -226,6 +258,87 @@ function renderRooms() {
   );
 }
 
+// ─── Categories ───────────────────────────────────────────────
+function amenityChecks(selected = []) {
+  return `<div class="amenity-checks">
+    ${AMENITIES.map((a) => `
+      <label class="amenity-check">
+        <input type="checkbox" name="amenity_${a.key}" value="${a.key}" ${selected.includes(a.key) ? "checked" : ""} />
+        ${a.label}
+      </label>`).join("")}
+  </div>`;
+}
+
+function collectAmenities(container) {
+  return AMENITIES.filter((a) => container.querySelector(`[name="amenity_${a.key}"]`)?.checked).map((a) => a.key);
+}
+
+function renderCategories() {
+  buildTable(
+    "#categoryTable",
+    ["Ad", "Qiymət/gecə", "Imkanlar", "Əməliyyat"],
+    state.categories.map((c) => {
+      const ams = Array.isArray(c.amenities) ? c.amenities : [];
+      return `
+      <tr>
+        <td><strong>${escapeHtml(c.name)}</strong><br><small style="color:var(--muted)">${escapeHtml(c.description || "")}</small></td>
+        <td>${c.base_price > 0 ? `<strong>${fmt(c.base_price)}</strong>` : "–"}</td>
+        <td><div class="amenity-badges">${ams.map((k) => {
+          const a = AMENITIES.find((x) => x.key === k);
+          return `<span class="amenity-badge">${escapeHtml(a ? a.label : k)}</span>`;
+        }).join("")}</div></td>
+        <td class="actions">
+          <button class="btn-edit" data-edit-category="${c.id}">✎ Redaktə</button>
+          <button class="btn-del"  data-del-category="${c.id}">Sil</button>
+        </td>
+      </tr>`;
+    })
+  );
+
+  // Populate room_type dropdowns (add + edit forms)
+  const catOpts = state.categories
+    .map((c) => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`)
+    .join("");
+  document.querySelectorAll('[name="room_type"]').forEach((el) => {
+    const cur = el.value;
+    el.innerHTML = catOpts;
+    if (cur && [...el.options].some((o) => o.value === cur)) el.value = cur;
+  });
+
+  // Render amenity checkboxes in the add-category form
+  const ac = document.getElementById("amenityCheckboxes");
+  if (ac) ac.innerHTML = `<label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">İmkanlar</label>${amenityChecks()}`;
+}
+
+function editCategory(id) {
+  const c = state.categories.find((x) => x.id === id);
+  if (!c) return;
+  const sel = Array.isArray(c.amenities) ? c.amenities : [];
+  openModal("Kateqoriyanı redaktə et", `
+    <form id="modalForm" class="form-grid">
+      <label>Ad<input name="name" value="${escapeHtml(c.name)}" required /></label>
+      <label>Qiymət (AZN/gecə)<input name="base_price" type="number" step="0.01" min="0" value="${Number(c.base_price || 0).toFixed(2)}" /></label>
+      <label class="wide">Açıqlama<input name="description" value="${escapeHtml(c.description || "")}" /></label>
+      <div class="wide">
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">İmkanlar</label>
+        ${amenityChecks(sel)}
+      </div>
+      <button type="submit">💾 Yadda saxla</button>
+    </form>
+  `, async (_) => {
+    const form = document.getElementById("modalForm");
+    const payload = {
+      name: form.querySelector("[name=name]").value.trim(),
+      description: form.querySelector("[name=description]").value.trim(),
+      base_price: parseFloat(form.querySelector("[name=base_price]").value) || 0,
+      amenities: collectAmenities(form),
+    };
+    await api(`/api/room-categories/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+    toast("Kateqoriya yeniləndi");
+    await loadAll();
+  });
+}
+
 // ─── Gantt Calendar ───────────────────────────────────────────
 function renderCalendar() {
   const { rooms, bookings } = state.calendar;
@@ -275,11 +388,12 @@ function renderCalendar() {
 }
 
 // ─── Guests ───────────────────────────────────────────────────
-function renderGuests() {
+function renderGuests(list) {
+  const guestData = list ?? state.guests;
   buildTable(
     "#guestTable",
     ["Ad soyad", "Telefon", "Sənəd", "Qeyd", "Əməliyyat"],
-    state.guests.map((g) => `
+    guestData.map((g) => `
       <tr>
         <td><strong>${escapeHtml(g.full_name)}</strong></td>
         <td>${escapeHtml(g.phone || "–")}</td>
@@ -317,26 +431,34 @@ function renderBookings(list) {
   buildTable(
     "#bookingTable",
     ["#", "Qonaq", "Otaq", "Tarix", "Status", "Məbləğ", "Ödənilib", "Borc", "Əməliyyat"],
-    data.map((b) => `
+    data.map((b) => {
+      const estimated = estimateLateFee(b);
+      return `
       <tr>
         <td>${b.id}</td>
         <td><strong>${escapeHtml(b.guest_name)}</strong><br><small>${escapeHtml(b.guest_phone || "")}</small></td>
         <td>${escapeHtml(b.room_number)} <small>(${b.people_count} nəfər)</small></td>
         <td>${b.check_in} 14:00<br>→ ${b.check_out} 12:00</td>
         <td><span class="status ${b.status}">${b.status}</span></td>
-        <td>${fmt(b.total_amount)}${b.late_fee > 0 ? `<br><small>+${fmt(b.late_fee)} gecikmə</small>` : ""}</td>
+        <td>
+          ${fmt(b.total_amount)}
+          ${Number(b.late_fee) > 0 ? `<br><small style="color:var(--warn)">+${fmt(b.late_fee)} gecikmə</small>` : ""}
+          ${estimated > 0 ? `<br><small style="color:var(--warn);opacity:.7">~${fmt(estimated)} (cari)</small>` : ""}
+        </td>
         <td>${fmt(b.paid_amount)}</td>
         <td style="${Number(b.balance) > 0 ? "color:var(--danger);font-weight:700" : ""}">${fmt(b.balance)}</td>
         <td class="actions">
-          ${isOps() ? `<button data-status="${b.id}:CheckedIn">✔ Giriş</button>
-          <button data-status="${b.id}:CheckedOut">✘ Çıxış</button>
-          <button data-status="${b.id}:Cancelled">Ləğv</button>` : ""}
-          ${isAdmin() && Number(b.late_fee) > 0 ? `<button data-late-fee="${b.id}">Gecikməni sil</button>` : ""}
+          ${isOps() ? `
+            ${b.status === "Reserved"  ? `<button data-status="${b.id}:CheckedIn">✔ Giriş</button>` : ""}
+            ${b.status === "CheckedIn" ? `<button data-status="${b.id}:CheckedOut">✘ Çıxış</button>` : ""}
+            ${b.status !== "CheckedOut" && b.status !== "Cancelled" ? `<button data-status="${b.id}:Cancelled">Ləğv</button>` : ""}
+          ` : ""}
+          ${isAdmin() ? `<button class="btn-edit" data-edit-late-fee="${b.id}">✎ Gecikmə</button>` : ""}
           ${isOps() ? `<button class="btn-edit" data-edit-booking="${b.id}">✎ Redaktə</button>` : ""}
           ${isAdmin() ? `<button class="btn-del" data-del-booking="${b.id}">Sil</button>` : ""}
         </td>
       </tr>
-    `)
+    `})
   );
 }
 
@@ -404,9 +526,11 @@ function renderRoomOrders() {
         <td><span class="status ${ORDER_STATUS_CLASS[o.status] || ""}">${escapeHtml(o.status)}</span></td>
         <td class="actions">
           ${isOps() ? `
-            <button data-order-status="${o.id}:Hazırlanır">Hazırlanır</button>
-            <button data-order-status="${o.id}:Çatdırıldı">✔ Çatdır</button>
-            <button data-order-status="${o.id}:Ləğv edildi">Ləğv</button>
+            ${o.status !== "Çatdırıldı" && o.status !== "Ləğv edildi" ? `
+              <button data-order-status="${o.id}:Hazırlanır">Hazırlanır</button>
+              <button data-order-status="${o.id}:Çatdırıldı">✔ Çatdır</button>
+              <button data-order-status="${o.id}:Ləğv edildi">Ləğv</button>
+            ` : ""}
             <button class="btn-edit" data-edit-order="${o.id}">✎</button>
           ` : ""}
           ${isAdmin() ? `<button class="btn-del" data-del-order="${o.id}">Sil</button>` : ""}
@@ -489,7 +613,7 @@ function renderRequests(list) {
   const data = list ?? state.requests;
   buildTable(
     "#requestTable",
-    ["Tarix", "Ad", "Telefon", "Tarix aralığı", "Nəfər", "Status", "Qəbul edən", "Əməliyyat"],
+    ["Tarix", "Ad", "Telefon", "Tarix aralığı", "Nəfər", "Kateqoriya", "Status", "Qəbul edən", "Əməliyyat"],
     data.map((r) => `
       <tr>
         <td>${r.created_at.slice(0, 10)}</td>
@@ -497,13 +621,16 @@ function renderRequests(list) {
         <td>${escapeHtml(r.phone || "–")}</td>
         <td>${r.check_in || "–"} → ${r.check_out || "–"}</td>
         <td>${r.people_count}</td>
+        <td>${r.room_category ? `<span class="amenity-badge">${escapeHtml(r.room_category)}</span>` : "–"}</td>
         <td><span class="status ${r.status}">${escapeHtml(r.status)}</span></td>
         <td>${r.handled_by ? `<strong>${escapeHtml(r.handled_by)}</strong><br><small>${escapeHtml((r.handled_at || "").slice(0, 16).replace("T", " "))}</small>` : "–"}</td>
         <td class="actions">
-          <button data-req-status="${r.id}:Baxılır">Baxılır</button>
-          <button data-req-status="${r.id}:Təsdiq">Təsdiq</button>
-          <button data-req-status="${r.id}:İmtina">İmtina</button>
-          <button class="btn-edit" data-convert-request="${r.id}">Bron yarat</button>
+          ${r.status === "Təsdiq" || r.status === "İmtina" ? "" : `
+            <button data-req-status="${r.id}:Baxılır">Baxılır</button>
+            <button data-req-status="${r.id}:Təsdiq">Təsdiq</button>
+            <button data-req-status="${r.id}:İmtina">İmtina</button>
+            <button class="btn-edit" data-convert-request="${r.id}">Bron yarat</button>
+          `}
         </td>
       </tr>
     `)
@@ -664,9 +791,13 @@ function renderAll() {
   renderStats();
   optionLists();
   renderRooms();
+  renderCategories();
   renderCalendar();
   renderGuests();
-  renderBookings();
+  // Re-apply active booking filter if any, else render full list
+  const _bq = document.getElementById("bookingSearch")?.value.trim();
+  const _bs = document.getElementById("bookingStatusFilter")?.value;
+  if (_bq || _bs) applyBookingFilter(); else renderBookings();
   renderDebtors();
   renderPayments();
   renderRoomOrders();
@@ -688,13 +819,14 @@ async function loadAll() {
   const requests = [
     api("/api/summary"),
     api("/api/rooms"),
+    api("/api/room-categories"),
     api(`/api/calendar?from=${calFrom}&to=${calTo}`),
+    api("/api/bookings"),
   ];
   if (isOps()) {
     requests.push(
       api("/api/guests"),
       api("/api/documents"),
-      api("/api/bookings"),
       api("/api/room-orders"),
       api("/api/booking-requests"),
     );
@@ -710,11 +842,10 @@ async function loadAll() {
   if (isAdmin())      requests.push(api("/api/users"), api("/api/audit?page=1&limit=100"), api("/api/backups"));
 
   const result = await Promise.all(requests);
-  const [summary, rooms, calendar] = result;
-  let idx = 3;
+  const [summary, rooms, categories, calendar, bookings] = result;
+  let idx = 5;
   const guests    = isOps() ? result[idx++] : [];
   const documents = isOps() ? result[idx++] : [];
-  const bookings  = isOps() ? result[idx++] : [];
   const roomOrders = isOps() ? result[idx++] : [];
   const reqs      = isOps() ? result[idx++] : [];
   const debtors   = isAccounting() ? result[idx++] : [];
@@ -725,7 +856,7 @@ async function loadAll() {
   const auditRes = isAdmin() ? result[idx++] : { data: [] };
   const backups  = isAdmin() ? result[idx++] : [];
 
-  Object.assign(state, { summary, rooms, guests, documents, bookings, calendar, debtors, payments, roomOrders, requests: reqs, reminders, expenses, users, backups });
+  Object.assign(state, { summary, rooms, categories, guests, documents, bookings, calendar, debtors, payments, roomOrders, requests: reqs, reminders, expenses, users, backups });
   state.audit = auditRes.data ?? auditRes;
   state.auditPage = 1;
 
@@ -795,6 +926,40 @@ function editGuest(id) {
   });
 }
 
+function editLateFee(id) {
+  const b = state.bookings.find((x) => x.id === id);
+  if (!b) return;
+  const estimated = estimateLateFee(b);
+  openModal("Gecikmə haqqını düzəlt", `
+    <form id="modalForm" class="form-grid">
+      <label>Hesablanmış gecikmə (AZN)
+        <input name="late_fee" type="number" step="0.01" min="0"
+          value="${Number(b.late_fee || 0).toFixed(2)}" required />
+      </label>
+      ${estimated > 0 ? `<p style="grid-column:1/-1;margin:0;font-size:12px;color:var(--muted)">Cari vaxt üzrə avtomatik hesab: <strong style="color:var(--warn)">${fmt(estimated)}</strong></p>` : ""}
+      <button type="submit">💾 Yadda saxla</button>
+      ${Number(b.late_fee) > 0 ? `<button type="button" id="clearLateFeeBtn" style="background:var(--danger)">Sıfırla</button>` : ""}
+    </form>
+  `, async (data) => {
+    await api(`/api/bookings/${id}/late-fee`, {
+      method: "PATCH",
+      body: JSON.stringify({ late_fee: parseFloat(data.late_fee) || 0 }),
+    });
+    toast("Gecikmə yeniləndi");
+    await loadAll();
+  });
+
+  document.getElementById("clearLateFeeBtn")?.addEventListener("click", async () => {
+    if (!confirm("Gecikmə sıfırlansın?")) return;
+    try {
+      await api(`/api/bookings/${id}/late-fee`, { method: "PATCH", body: JSON.stringify({ late_fee: 0 }) });
+      toast("Gecikmə silindi", "warn");
+      closeModal();
+      await loadAll();
+    } catch (err) { toast(err.message, "error"); }
+  });
+}
+
 function editBooking(id) {
   const b = state.bookings.find((x) => x.id === id);
   if (!b) return;
@@ -810,10 +975,8 @@ function editBooking(id) {
       <label>Çıxış<input name="check_out" type="date" value="${b.check_out}" required /></label>
       <label>Nəfər<input name="people_count" type="number" min="1" value="${b.people_count}" required /></label>
       <label>Məbləğ<input name="total_amount" type="number" step="0.01" value="${b.total_amount}" required /></label>
-      <label>Status<select name="status">
-        ${["Reserved","CheckedIn","CheckedOut","Cancelled"].map((s) =>
-          `<option ${s === b.status ? "selected" : ""}>${s}</option>`).join("")}
-      </select></label>
+      <input type="hidden" name="status" value="${escapeHtml(b.status)}" />
+      <input type="hidden" name="late_fee" value="${Number(b.late_fee || 0).toFixed(2)}" />
       <label class="wide">Qeyd<input name="note" value="${escapeHtml(b.note || "")}" /></label>
       <button type="submit">💾 Yadda saxla</button>
     </form>
@@ -822,18 +985,40 @@ function editBooking(id) {
     toast("Bron yeniləndi");
     await loadAll();
   });
+
+  const modal = document.getElementById("modal");
+  const mRoom  = modal.querySelector('[name="room_id"]');
+  const mIn    = modal.querySelector('[name="check_in"]');
+  const mOut   = modal.querySelector('[name="check_out"]');
+  const mAmt   = modal.querySelector('[name="total_amount"]');
+  const recalcModal = () => {
+    if (!mRoom || !mIn?.value || !mOut?.value || !mAmt) return;
+    const room = state.rooms.find((r) => r.id === parseInt(mRoom.value, 10));
+    if (room) mAmt.value = (room.nightly_rate * daysBetween(mIn.value, mOut.value)).toFixed(2);
+  };
+  mRoom?.addEventListener("change", recalcModal);
+  mIn?.addEventListener("change",   recalcModal);
+  mOut?.addEventListener("change",  recalcModal);
 }
 
 function convertRequestToBooking(id) {
   const req = state.requests.find((x) => x.id === id);
   if (!req) return;
-  const roomOpts = state.rooms.map((r) =>
-    `<option value="${r.id}">${escapeHtml(r.number)} (boş: ${r.free_beds}/${r.capacity}) – ${fmt(r.nightly_rate)}/gecə</option>`
-  ).join("");
+  const requestedCat = req.room_category || "";
+  const sortedRooms = [...state.rooms].sort((a, b) => {
+    const aMatch = requestedCat && a.room_type === requestedCat ? -1 : 0;
+    const bMatch = requestedCat && b.room_type === requestedCat ? -1 : 0;
+    return aMatch - bMatch;
+  });
+  const roomOpts = sortedRooms.map((r) => {
+    const isMatch = requestedCat && r.room_type === requestedCat;
+    return `<option value="${r.id}" ${isMatch ? "selected" : ""}>${isMatch ? "★ " : ""}${escapeHtml(r.number)} [${escapeHtml(r.room_type)}] (boş: ${r.free_beds}/${r.capacity}) – ${fmt(r.nightly_rate)}/gecə</option>`;
+  }).join("");
   openModal("Sorğunu brona çevir", `
     <form id="modalForm" class="form-grid">
       <label>Ad soyad<input value="${escapeHtml(req.full_name)}" disabled /></label>
       <label>Telefon<input value="${escapeHtml(req.phone || "")}" disabled /></label>
+      ${requestedCat ? `<label class="wide">İstənilən kateqoriya<input value="${escapeHtml(requestedCat)}" disabled style="color:var(--accent);font-weight:600" /></label>` : ""}
       <label>Otaq<select name="room_id">${roomOpts}</select></label>
       <label>Status<select name="status"><option>Reserved</option><option>CheckedIn</option></select></label>
       <label>Giriş<input name="check_in" type="date" value="${escapeHtml(req.check_in || today())}" required /></label>
@@ -900,11 +1085,14 @@ function editExpense(id) {
 function editRoom(id) {
   const r = state.rooms.find((x) => x.id === id);
   if (!r) return;
+  const catOpts = state.categories
+    .map((c) => `<option value="${escapeHtml(c.name)}" ${c.name === r.room_type ? "selected" : ""}>${escapeHtml(c.name)}</option>`)
+    .join("");
   openModal("Otağı redaktə et", `
     <form id="modalForm" class="form-grid">
       <label>Nömrə<input name="number" value="${escapeHtml(r.number)}" required /></label>
       <label>Mərtəbə<input name="floor" type="number" min="1" value="${r.floor}" required /></label>
-      <label>Tip<input name="room_type" value="${escapeHtml(r.room_type)}" required /></label>
+      <label>Kateqoriya<select name="room_type" required>${catOpts}</select></label>
       <label>Tutum<input name="capacity" type="number" min="1" value="${r.capacity}" required /></label>
       <label>Gecəlik AZN<input name="nightly_rate" type="number" step="0.01" value="${r.nightly_rate}" required /></label>
       <label class="wide">Qeyd<input name="note" value="${escapeHtml(r.note || "")}" /></label>
@@ -1003,10 +1191,7 @@ document.getElementById("guestSearch").addEventListener("input", (e) => {
       (g) => !q || g.full_name.toLowerCase().includes(q) ||
         (g.phone || "").includes(q) || (g.document_no || "").includes(q)
     );
-    const orig = state.guests;
-    state.guests = filtered;
-    renderGuests();
-    state.guests = orig;
+    renderGuests(filtered);
   }, 300);
 });
 
@@ -1080,6 +1265,9 @@ document.querySelector("#backupBtn").addEventListener("click", async () => {
 document.querySelector("#logoutBtn").addEventListener("click", async () => {
   await api("/api/auth/logout", { method: "POST", body: "{}" }).catch(() => {});
   state.user = null;
+  document.querySelectorAll(".tab, .panel").forEach((el) => el.classList.remove("active"));
+  document.querySelectorAll(".ops-only, .admin-only, .accounting-only")
+    .forEach((el) => el.classList.add("hidden"));
   showLogin();
 });
 
@@ -1128,6 +1316,38 @@ function fileToBase64(file) {
   });
 }
 
+// ─── Category form ────────────────────────────────────────────
+document.querySelector("#categoryForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const payload = {
+    name:        form.querySelector("[name=name]").value.trim(),
+    description: form.querySelector("[name=description]")?.value.trim() || "",
+    base_price:  parseFloat(form.querySelector("[name=base_price]")?.value) || 0,
+    amenities:   collectAmenities(form),
+  };
+  try {
+    await api("/api/room-categories", { method: "POST", body: JSON.stringify(payload) });
+    form.reset();
+    toast("Kateqoriya əlavə edildi");
+    await loadAll();
+  } catch (err) { toast(err.message, "error"); }
+});
+
+document.querySelector("#categoryTable").addEventListener("click", async (e) => {
+  const editBtn = e.target.closest("[data-edit-category]");
+  const delBtn  = e.target.closest("[data-del-category]");
+  if (editBtn) { editCategory(parseInt(editBtn.dataset.editCategory, 10)); return; }
+  if (delBtn) {
+    if (!confirm("Bu kateqoriya silinsin?")) return;
+    try {
+      await api(`/api/room-categories/${delBtn.dataset.delCategory}`, { method: "DELETE" });
+      toast("Kateqoriya silindi", "warn");
+      await loadAll();
+    } catch (err) { toast(err.message, "error"); }
+  }
+});
+
 // ─── Room form ────────────────────────────────────────────────
 document.querySelector("#roomForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -1174,6 +1394,15 @@ document.querySelector("#bookingForm").addEventListener("submit", async (e) => {
 });
 document.querySelector('[name="room_id"]')?.addEventListener("change", calcBookingAmount);
 
+// Auto-fill nightly_rate from category base_price
+document.querySelector("#roomTypeSelect")?.addEventListener("change", (e) => {
+  const cat = state.categories.find((c) => c.name === e.target.value);
+  if (cat && cat.base_price > 0) {
+    const rateEl = document.querySelector('#roomForm [name="nightly_rate"]');
+    if (rateEl) rateEl.value = cat.base_price.toFixed(2);
+  }
+});
+
 // ─── Payment form ─────────────────────────────────────────────
 document.querySelector("#paymentForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -1204,20 +1433,13 @@ document.querySelector("#userForm").addEventListener("submit", async (e) => {
 
 // ─── Booking table actions ────────────────────────────────────
 document.querySelector("#bookingTable").addEventListener("click", async (e) => {
-  const statusBtn  = e.target.closest("[data-status]");
-  const lateFeeBtn = e.target.closest("[data-late-fee]");
-  const editBtn    = e.target.closest("[data-edit-booking]");
-  const delBtn     = e.target.closest("[data-del-booking]");
+  const statusBtn      = e.target.closest("[data-status]");
+  const lateFeeEditBtn = e.target.closest("[data-edit-late-fee]");
+  const editBtn        = e.target.closest("[data-edit-booking]");
+  const delBtn         = e.target.closest("[data-del-booking]");
 
-  if (lateFeeBtn) {
-    if (!confirm("Bu bron üçün avtomatik hesablanmış gecikmə silinsin?")) return;
-    try {
-      await api(`/api/bookings/${lateFeeBtn.dataset.lateFee}/late-fee`, {
-        method: "PATCH", body: JSON.stringify({ late_fee: 0 }),
-      });
-      toast("Gecikmə silindi");
-      await loadAll();
-    } catch (err) { toast(err.message, "error"); }
+  if (lateFeeEditBtn) {
+    editLateFee(parseInt(lateFeeEditBtn.dataset.editLateFee, 10));
     return;
   }
 

@@ -48,6 +48,13 @@ class Hotel50ApiTests(unittest.TestCase):
         conn.close()
         return res.status, dict(res.getheaders()), data
 
+    def header(self, headers, name):
+        lower = name.lower()
+        for key, value in headers.items():
+            if key.lower() == lower:
+                return value
+        return ""
+
     def login(self, username, password):
         status, headers, data = self.request("POST", "/api/auth/login", {
             "username": username,
@@ -57,6 +64,27 @@ class Hotel50ApiTests(unittest.TestCase):
         cookie = headers.get("Set-Cookie", "").split(";", 1)[0]
         self.assertTrue(cookie)
         return {"Cookie": cookie}
+
+    def test_static_entry_routes_are_separated(self):
+        status, headers, data = self.request("GET", "/")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", self.header(headers, "Content-Type"))
+        body = data.decode("utf-8")
+        self.assertIn("İdarəetmə və rezervasiya üçün giriş səhifəsi.", body)
+        self.assertIn('href="app.html"', body)
+        self.assertNotIn('id="loginForm"', body)
+
+        status, headers, data = self.request("GET", "/app.html")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", self.header(headers, "Content-Type"))
+        app_body = data.decode("utf-8")
+        self.assertIn('id="loginForm"', app_body)
+        self.assertIn("Sorğu səhifəsini aç", app_body)
+
+        status, headers, data = self.request("GET", "/request.html")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", self.header(headers, "Content-Type"))
+        self.assertIn("Rezervasiya sorğusu", data.decode("utf-8"))
 
     def test_public_booking_request_works_without_auth(self):
         status, _, data = self.request("POST", "/api/public/booking-requests", {
