@@ -305,6 +305,177 @@ class Hotel50ApiTests(unittest.TestCase):
         booking = next(item for item in json.loads(data) if item["id"] == booking_id)
         self.assertEqual(booking["late_fee"], 0)
 
+    def test_booking_total_is_computed_server_side_on_create_and_update(self):
+        reception = self.login("reception", "reception123")
+
+        status, _, data = self.request("POST", "/api/guests", {
+            "full_name": "Server Total Guest",
+            "phone": "+994505551111",
+            "document_no": "CC1234567",
+            "note": "",
+        }, headers=reception)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        guest_id = json.loads(data)["id"]
+
+        status, _, data = self.request("POST", "/api/bookings", {
+            "guest_id": guest_id,
+            "room_id": 1,
+            "check_in": "2026-06-10",
+            "check_out": "2026-06-12",
+            "status": "Reserved",
+            "people_count": 1,
+            "total_amount": 999,
+            "note": "",
+        }, headers=reception)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        booking_id = json.loads(data)["id"]
+
+        status, _, data = self.request("GET", "/api/bookings", headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        booking = next(item for item in json.loads(data) if item["id"] == booking_id)
+        self.assertEqual(booking["total_amount"], 90)
+
+        status, _, data = self.request("PUT", f"/api/bookings/{booking_id}", {
+            "guest_id": guest_id,
+            "room_id": 1,
+            "check_in": "2026-06-10",
+            "check_out": "2026-06-13",
+            "status": "Reserved",
+            "people_count": 1,
+            "total_amount": 1,
+            "late_fee": 0,
+            "note": "extended",
+        }, headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+
+        status, _, data = self.request("GET", "/api/bookings", headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        booking = next(item for item in json.loads(data) if item["id"] == booking_id)
+        self.assertEqual(booking["total_amount"], 135)
+
+    def test_delivered_room_orders_affect_balance_receipt_and_reminders(self):
+        reception = self.login("reception", "reception123")
+        accounting = self.login("accounting", "accounting123")
+
+        status, _, data = self.request("POST", "/api/guests", {
+            "full_name": "Service Guest",
+            "phone": "+994507001122",
+            "document_no": "DD1234567",
+            "note": "",
+        }, headers=reception)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        guest_id = json.loads(data)["id"]
+
+        status, _, data = self.request("POST", "/api/bookings", {
+            "guest_id": guest_id,
+            "room_id": 1,
+            "check_in": "2026-06-14",
+            "check_out": "2026-06-15",
+            "status": "CheckedIn",
+            "people_count": 1,
+            "total_amount": 0,
+            "note": "",
+        }, headers=reception)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        booking_id = json.loads(data)["id"]
+
+        status, _, data = self.request("POST", "/api/room-orders", {
+            "room_id": 1,
+            "booking_id": booking_id,
+            "category": "Yemək",
+            "description": "Club sandwich",
+            "amount": 12,
+            "status": "Yeni",
+            "note": "",
+        }, headers=reception)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        order_id = json.loads(data)["id"]
+
+        status, _, data = self.request("GET", "/api/bookings", headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        booking = next(item for item in json.loads(data) if item["id"] == booking_id)
+        self.assertEqual(booking["room_order_amount"], 0)
+        self.assertEqual(booking["balance"], 45)
+
+        status, _, data = self.request("PATCH", f"/api/room-orders/{order_id}/status", {
+            "status": "Çatdırıldı",
+        }, headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+
+        status, _, data = self.request("GET", "/api/bookings", headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        booking = next(item for item in json.loads(data) if item["id"] == booking_id)
+        self.assertEqual(booking["room_order_amount"], 12)
+        self.assertEqual(booking["balance"], 57)
+
+        status, _, data = self.request("POST", "/api/payments", {
+            "booking_id": booking_id,
+            "amount": 20,
+            "method": "Cash",
+            "paid_at": "2026-06-14",
+            "note": "partial",
+        }, headers=accounting)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        payment_id = json.loads(data)["id"]
+
+        status, headers, data = self.request("GET", f"/api/receipts/{payment_id}", headers=accounting)
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", self.header(headers, "Content-Type"))
+        receipt = data.decode("utf-8")
+        self.assertIn("Əlavə sifariş", receipt)
+        self.assertIn("57.0 AZN", receipt)
+        self.assertIn("37.0 AZN", receipt)
+
+        status, _, data = self.request("GET", "/api/reminders?booking_id=%d" % booking_id, headers=accounting)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        reminders = json.loads(data)
+        self.assertEqual(len(reminders["debtors"]), 1)
+        self.assertEqual(reminders["debtors"][0]["balance"], 37)
+        self.assertEqual(reminders["debtors"][0]["id"], booking_id)
+        self.assertIn("sms:", reminders["debtors"][0]["sms_url"])
+        self.assertTrue(reminders["debtors"][0]["message_text"])
+
+        status, headers, data = self.request("GET", f"/api/invoices/{booking_id}", headers=accounting)
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", self.header(headers, "Content-Type"))
+        invoice = data.decode("utf-8")
+        self.assertIn("Final hesab-faktura", invoice)
+        self.assertIn("Club sandwich", invoice)
+        self.assertIn("37.0 AZN", invoice)
+
+    def test_backup_restore_smoke(self):
+        admin = self.login("admin", "admin123")
+        reception = self.login("reception", "reception123")
+
+        status, _, data = self.request("POST", "/api/guests", {
+            "full_name": "Restore Before",
+            "phone": "+994500001111",
+            "document_no": "",
+            "note": "",
+        }, headers=reception)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+
+        status, _, data = self.request("GET", "/api/backup", headers=admin)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        backup_name = json.loads(data)["name"]
+
+        status, _, data = self.request("POST", "/api/guests", {
+            "full_name": "Restore After",
+            "phone": "+994500002222",
+            "document_no": "",
+            "note": "",
+        }, headers=reception)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+
+        status, _, data = self.request("POST", "/api/restore", {"name": backup_name}, headers=admin)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+
+        status, _, data = self.request("GET", "/api/guests", headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        names = [item["full_name"] for item in json.loads(data)]
+        self.assertIn("Restore Before", names)
+        self.assertNotIn("Restore After", names)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -506,6 +506,64 @@ def has_capacity(room_id, check_in, check_out, people_count, exclude_booking_id=
     return True, ""
 
 
+def room_rate(room_id):
+    room_item = row("SELECT nightly_rate FROM rooms WHERE id = ?", (integer(room_id),))
+    if not room_item:
+        raise ValueError("Otaq tapılmadı")
+    return money(room_item["nightly_rate"])
+
+
+def booking_room_total(room_id, check_in, check_out):
+    return round(room_rate(room_id) * days_between(check_in, check_out), 2)
+
+
+def booking_service_orders(booking_id):
+    return rows(
+        """
+        SELECT category, description, amount, created_at
+        FROM room_orders
+        WHERE booking_id = ? AND status = 'Çatdırıldı'
+        ORDER BY created_at ASC
+        """,
+        (integer(booking_id),),
+    )
+
+
+def booking_financials(booking_id):
+    item = row(
+        """
+        SELECT b.id, b.check_in, b.check_out, b.status, b.note, b.total_amount,
+               COALESCE(b.late_fee, 0) AS late_fee,
+               g.full_name AS guest_name, g.phone AS guest_phone,
+               r.number AS room_number,
+               COALESCE(ro.room_order_amount, 0) AS room_order_amount,
+               COALESCE(p.total_paid, 0) AS total_paid
+        FROM bookings b
+        JOIN guests g ON g.id = b.guest_id
+        JOIN rooms r ON r.id = b.room_id
+        LEFT JOIN (
+          SELECT booking_id, SUM(amount) AS room_order_amount
+          FROM room_orders
+          WHERE booking_id IS NOT NULL AND status = 'Çatdırıldı'
+          GROUP BY booking_id
+        ) ro ON ro.booking_id = b.id
+        LEFT JOIN (
+          SELECT booking_id, SUM(amount) AS total_paid
+          FROM payments
+          GROUP BY booking_id
+        ) p ON p.booking_id = b.id
+        WHERE b.id = ?
+        """,
+        (integer(booking_id),),
+    )
+    if not item:
+        return None
+    item["grand_total"] = round(money(item["total_amount"]) + money(item["room_order_amount"]) + money(item["late_fee"]), 2)
+    item["balance"] = round(item["grand_total"] - money(item["total_paid"]), 2)
+    item["service_orders"] = booking_service_orders(booking_id)
+    return item
+
+
 # ─────────────────────── Queries ───────────────────────
 
 def booking_select(where="", params=()):
@@ -513,14 +571,24 @@ def booking_select(where="", params=()):
       SELECT b.*, g.full_name AS guest_name, g.phone AS guest_phone,
              r.number AS room_number, r.capacity AS room_capacity,
              r.nightly_rate AS room_rate,
-             COALESCE(SUM(p.amount), 0) AS paid_amount,
-             b.total_amount + COALESCE(b.late_fee, 0) - COALESCE(SUM(p.amount), 0) AS balance
+             COALESCE(ro.room_order_amount, 0) AS room_order_amount,
+             COALESCE(p.paid_amount, 0) AS paid_amount,
+             b.total_amount + COALESCE(ro.room_order_amount, 0) + COALESCE(b.late_fee, 0) - COALESCE(p.paid_amount, 0) AS balance
       FROM bookings b
       JOIN guests g ON g.id = b.guest_id
       JOIN rooms r ON r.id = b.room_id
-      LEFT JOIN payments p ON p.booking_id = b.id
+      LEFT JOIN (
+        SELECT booking_id, SUM(amount) AS room_order_amount
+        FROM room_orders
+        WHERE booking_id IS NOT NULL AND status = 'Çatdırıldı'
+        GROUP BY booking_id
+      ) ro ON ro.booking_id = b.id
+      LEFT JOIN (
+        SELECT booking_id, SUM(amount) AS paid_amount
+        FROM payments
+        GROUP BY booking_id
+      ) p ON p.booking_id = b.id
       {where}
-      GROUP BY b.id
       ORDER BY b.created_at DESC
     """
     return rows(sql, params)
@@ -561,14 +629,24 @@ def debtors():
         SELECT * FROM (
           SELECT b.*, g.full_name AS guest_name, g.phone AS guest_phone,
                  r.number AS room_number,
-                 COALESCE(SUM(p.amount), 0) AS paid_amount,
-                 b.total_amount + COALESCE(b.late_fee, 0) - COALESCE(SUM(p.amount), 0) AS balance
+                 COALESCE(ro.room_order_amount, 0) AS room_order_amount,
+                 COALESCE(p.paid_amount, 0) AS paid_amount,
+                 b.total_amount + COALESCE(ro.room_order_amount, 0) + COALESCE(b.late_fee, 0) - COALESCE(p.paid_amount, 0) AS balance
           FROM bookings b
           JOIN guests g ON g.id = b.guest_id
           JOIN rooms r ON r.id = b.room_id
-          LEFT JOIN payments p ON p.booking_id = b.id
+          LEFT JOIN (
+            SELECT booking_id, SUM(amount) AS room_order_amount
+            FROM room_orders
+            WHERE booking_id IS NOT NULL AND status = 'Çatdırıldı'
+            GROUP BY booking_id
+          ) ro ON ro.booking_id = b.id
+          LEFT JOIN (
+            SELECT booking_id, SUM(amount) AS paid_amount
+            FROM payments
+            GROUP BY booking_id
+          ) p ON p.booking_id = b.id
           WHERE b.status IN ('Reserved', 'CheckedIn', 'CheckedOut')
-          GROUP BY b.id
         ) items
         WHERE balance > 0
         ORDER BY balance DESC
@@ -592,15 +670,37 @@ def calendar_items(from_date=None, to_date=None):
     }
 
 
-def reminders():
-    today = date.today().isoformat()
+def reminders(target_date=None, search_text="", booking_id=None):
+    target_date = target_date or date.today().isoformat()
+    search_text = str(search_text or "").strip().lower()
+    booking_id = integer(booking_id) if booking_id else None
     due = debtors()
-    arrivals = booking_select("WHERE b.check_in = ? AND b.status = 'Reserved'", (today,))
-    departures = booking_select("WHERE b.check_out = ? AND b.status = 'CheckedIn'", (today,))
+    arrivals = booking_select("WHERE b.check_in = ? AND b.status = 'Reserved'", (target_date,))
+    departures = booking_select("WHERE b.check_out = ? AND b.status = 'CheckedIn'", (target_date,))
+    if booking_id:
+        due = [item for item in due if integer(item["id"]) == booking_id]
+        arrivals = [item for item in arrivals if integer(item["id"]) == booking_id]
+        departures = [item for item in departures if integer(item["id"]) == booking_id]
+    if search_text:
+        def matches(item):
+            hay = " ".join([
+                str(item.get("guest_name") or ""),
+                str(item.get("guest_phone") or ""),
+                str(item.get("room_number") or ""),
+                str(item.get("id") or ""),
+            ]).lower()
+            return search_text in hay
+        due = [item for item in due if matches(item)]
+        arrivals = [item for item in arrivals if matches(item)]
+        departures = [item for item in departures if matches(item)]
     for item in due:
         text = f"Salam {item['guest_name']}, Hotel 50 üzrə qalıq borcunuz: {money(item['balance'])} AZN."
+        sms_text = f"Hotel 50: {item['guest_name']}, qalıq borcunuz {money(item['balance'])} AZN-dir."
+        item["message_text"] = text
+        item["sms_text"] = sms_text
         item["whatsapp_url"] = f"https://wa.me/{''.join(ch for ch in str(item.get('guest_phone') or '') if ch.isdigit())}?text={quote(text)}"
-    return {"debtors": due, "arrivals": arrivals, "departures": departures}
+        item["sms_url"] = f"sms:{''.join(ch for ch in str(item.get('guest_phone') or '') if ch.isdigit())}?body={quote(sms_text)}"
+    return {"date": target_date, "debtors": due, "arrivals": arrivals, "departures": departures}
 
 
 def summary():
@@ -612,9 +712,15 @@ def summary():
     money_row = row(
         """
         SELECT
-          COALESCE(SUM(b.total_amount + COALESCE(b.late_fee, 0)), 0) AS total_amount,
+          COALESCE(SUM(b.total_amount + COALESCE(ro.room_order_amount, 0) + COALESCE(b.late_fee, 0)), 0) AS total_amount,
           COALESCE(SUM(payments.paid), 0) AS paid_amount
         FROM bookings b
+        LEFT JOIN (
+          SELECT booking_id, SUM(amount) AS room_order_amount
+          FROM room_orders
+          WHERE booking_id IS NOT NULL AND status = 'Çatdırıldı'
+          GROUP BY booking_id
+        ) ro ON ro.booking_id = b.id
         LEFT JOIN (
           SELECT booking_id, SUM(amount) AS paid FROM payments GROUP BY booking_id
         ) payments ON payments.booking_id = b.id
@@ -879,7 +985,11 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/reminders":
                 if not self.require_auth(MONEY_ROLES):
                     return
-                return self.send_json(reminders())
+                return self.send_json(reminders(
+                    target_date=qs.get("date", [""])[0].strip() or None,
+                    search_text=qs.get("q", [""])[0].strip(),
+                    booking_id=qs.get("booking_id", [""])[0].strip() or None,
+                ))
 
             if path == "/api/booking-requests":
                 if not self.require_auth(OPS_ROLES):
@@ -965,12 +1075,25 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 output = io.StringIO()
                 writer = csv.writer(output)
-                writer.writerow(["type", "date", "name", "room_or_category", "amount", "late_fee", "paid", "balance", "note"])
+                writer.writerow(["type", "date", "name", "room_or_category", "amount", "service_amount", "late_fee", "paid", "balance", "note"])
                 for b in booking_select():
                     writer.writerow(["booking", b["check_in"], b["guest_name"], b["room_number"],
-                                     b["total_amount"], b["late_fee"], b["paid_amount"], b["balance"], b["note"]])
+                                     b["total_amount"], b["room_order_amount"], b["late_fee"], b["paid_amount"], b["balance"], b["note"]])
+                for o in rows(
+                    """
+                    SELECT o.*, g.full_name AS guest_name, r.number AS room_number
+                    FROM room_orders o
+                    JOIN rooms r ON r.id = o.room_id
+                    LEFT JOIN bookings b ON b.id = o.booking_id
+                    LEFT JOIN guests g ON g.id = b.guest_id
+                    WHERE o.status = 'Çatdırıldı'
+                    ORDER BY o.created_at DESC
+                    """
+                ):
+                    writer.writerow(["room_order", o["created_at"][:10], o["guest_name"] or "", o["room_number"],
+                                     "", o["amount"], "", "", "", o["description"]])
                 for e in rows("SELECT * FROM expenses ORDER BY spent_at DESC"):
-                    writer.writerow(["expense", e["spent_at"], "", e["category"], e["amount"], "", "", "", e["note"]])
+                    writer.writerow(["expense", e["spent_at"], "", e["category"], e["amount"], "", "", "", "", e["note"]])
                 return self.send_text(output.getvalue(), "text/csv; charset=utf-8", filename="hotel50-report.csv")
 
             # /api/receipts/:id
@@ -980,17 +1103,53 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 payment = row(
                     """
-                    SELECT p.*, g.full_name AS guest_name, r.number AS room_number, b.check_in, b.check_out
+                    SELECT p.*, g.full_name AS guest_name, r.number AS room_number,
+                           b.check_in, b.check_out, b.total_amount, COALESCE(b.late_fee, 0) AS late_fee,
+                           COALESCE(ro.room_order_amount, 0) AS room_order_amount,
+                           COALESCE(paid.total_paid, 0) AS total_paid
                     FROM payments p
                     JOIN bookings b ON b.id = p.booking_id
                     JOIN guests g ON g.id = b.guest_id
                     JOIN rooms r ON r.id = b.room_id
+                    LEFT JOIN (
+                      SELECT booking_id, SUM(amount) AS room_order_amount
+                      FROM room_orders
+                      WHERE booking_id IS NOT NULL AND status = 'Çatdırıldı'
+                      GROUP BY booking_id
+                    ) ro ON ro.booking_id = b.id
+                    LEFT JOIN (
+                      SELECT booking_id, SUM(amount) AS total_paid
+                      FROM payments
+                      GROUP BY booking_id
+                    ) paid ON paid.booking_id = b.id
                     WHERE p.id = ?
                     """,
                     (integer(parts[2]),),
                 )
                 if not payment:
                     return self.send_error_json("Qəbz tapılmadı", 404)
+                service_orders = rows(
+                    """
+                    SELECT category, description, amount
+                    FROM room_orders
+                    WHERE booking_id = ? AND status = 'Çatdırıldı'
+                    ORDER BY created_at ASC
+                    """,
+                    (integer(payment["booking_id"]),),
+                )
+                grand_total = round(
+                    money(payment["total_amount"]) + money(payment["room_order_amount"]) + money(payment["late_fee"]),
+                    2,
+                )
+                remaining = round(grand_total - money(payment["total_paid"]), 2)
+                service_html = ""
+                if service_orders:
+                    items = "".join(
+                        f"<li>{html_escape(str(item['category'] or ''))}: {html_escape(str(item['description'] or ''))} "
+                        f"<strong>{money(item['amount'])} AZN</strong></li>"
+                        for item in service_orders
+                    )
+                    service_html = f"<dt>Əlavə sifarişlər</dt><dd><ul style='padding-left:18px;margin:0'>{items}</ul></dd>"
                 html = f"""<!doctype html><html><head><meta charset='utf-8'><title>Qəbz #{payment['id']}</title>
                 <style>body{{font-family:Arial;padding:32px}}.box{{border:1px solid #ddd;padding:20px;max-width:520px}}
                 dt{{font-weight:bold;color:#667085;font-size:13px}}dd{{margin:0 0 10px;font-size:15px}}
@@ -1000,11 +1159,69 @@ class Handler(SimpleHTTPRequestHandler):
                 <dt>Qonaq</dt><dd>{html_escape(str(payment['guest_name'] or ''))}</dd>
                 <dt>Otaq</dt><dd>{html_escape(str(payment['room_number'] or ''))}</dd>
                 <dt>Qalma</dt><dd>{html_escape(str(payment['check_in'] or ''))} → {html_escape(str(payment['check_out'] or ''))}</dd>
+                <dt>Otaq haqqı</dt><dd>{money(payment['total_amount'])} AZN</dd>
+                <dt>Əlavə sifariş</dt><dd>{money(payment['room_order_amount'])} AZN</dd>
+                <dt>Gecikmə</dt><dd>{money(payment['late_fee'])} AZN</dd>
+                <dt>Yekun borc</dt><dd><strong>{grand_total} AZN</strong></dd>
                 <dt>Ödəniş tarixi</dt><dd>{html_escape(str(payment['paid_at'] or ''))}</dd>
                 <dt>Məbləğ</dt><dd><strong>{money(payment['amount'])} AZN</strong></dd>
+                <dt>Bu günə qədər ödənilib</dt><dd>{money(payment['total_paid'])} AZN</dd>
+                <dt>Qalıq</dt><dd><strong>{remaining} AZN</strong></dd>
                 <dt>Metod</dt><dd>{html_escape(str(payment['method'] or ''))}</dd>
+                {service_html}
                 {f"<dt>Qeyd</dt><dd>{html_escape(str(payment['note']))}</dd>" if payment.get('note') else ""}
                 </dl><button onclick='window.print()' style='padding:10px 20px;background:#0f766e;color:#fff;border:0;border-radius:6px;cursor:pointer;font-size:15px'>Çap et</button>
+                </div></body></html>"""
+                return self.send_text(html, "text/html; charset=utf-8")
+
+            # /api/invoices/:booking_id
+            if len(parts) == 3 and parts[:2] == ["api", "invoices"]:
+                if not self.require_auth(MONEY_ROLES):
+                    return
+                invoice = booking_financials(parts[2])
+                if not invoice:
+                    return self.send_error_json("Hesab-faktura tapılmadı", 404)
+                service_html = ""
+                if invoice["service_orders"]:
+                    items = "".join(
+                        f"<tr><td>{html_escape(str(item['created_at'])[:16].replace('T', ' '))}</td>"
+                        f"<td>{html_escape(str(item['category'] or ''))}</td>"
+                        f"<td>{html_escape(str(item['description'] or ''))}</td>"
+                        f"<td style='text-align:right'>{money(item['amount'])} AZN</td></tr>"
+                        for item in invoice["service_orders"]
+                    )
+                    service_html = (
+                        "<h3 style='margin:24px 0 10px;color:#0f766e'>Əlavə sifarişlər</h3>"
+                        "<table style='width:100%;border-collapse:collapse'>"
+                        "<thead><tr><th style='text-align:left'>Tarix</th><th style='text-align:left'>Kateqoriya</th>"
+                        "<th style='text-align:left'>Təsvir</th><th style='text-align:right'>Məbləğ</th></tr></thead>"
+                        f"<tbody>{items}</tbody></table>"
+                    )
+                html = f"""<!doctype html><html><head><meta charset='utf-8'><title>Hesab-faktura #{invoice['id']}</title>
+                <style>
+                body{{font-family:Arial;padding:32px;color:#111827}} .box{{border:1px solid #ddd;padding:24px;max-width:760px}}
+                h1,h3{{margin:0}} dl{{display:grid;grid-template-columns:170px 1fr;gap:8px 14px;margin:18px 0}}
+                dt{{font-weight:bold;color:#667085;font-size:13px}} dd{{margin:0;font-size:15px}}
+                .totals{{margin-top:20px;border-top:1px solid #e5e7eb;padding-top:16px}}
+                .totals div{{display:flex;justify-content:space-between;padding:4px 0}} th,td{{padding:8px 6px;border-bottom:1px solid #f1f5f9;font-size:14px}}
+                </style></head>
+                <body><div class='box'><h1 style='color:#0f766e'>Hotel 50</h1><p style='color:#667085'>Final hesab-faktura</p><dl>
+                <dt>Bron №</dt><dd>#{invoice['id']}</dd>
+                <dt>Qonaq</dt><dd>{html_escape(str(invoice['guest_name'] or ''))}</dd>
+                <dt>Telefon</dt><dd>{html_escape(str(invoice['guest_phone'] or ''))}</dd>
+                <dt>Otaq</dt><dd>{html_escape(str(invoice['room_number'] or ''))}</dd>
+                <dt>Qalma</dt><dd>{html_escape(str(invoice['check_in'] or ''))} → {html_escape(str(invoice['check_out'] or ''))}</dd>
+                <dt>Status</dt><dd>{html_escape(str(invoice['status'] or ''))}</dd>
+                </dl>
+                {service_html}
+                <div class='totals'>
+                  <div><span>Otaq haqqı</span><strong>{money(invoice['total_amount'])} AZN</strong></div>
+                  <div><span>Əlavə sifarişlər</span><strong>{money(invoice['room_order_amount'])} AZN</strong></div>
+                  <div><span>Gecikmə haqqı</span><strong>{money(invoice['late_fee'])} AZN</strong></div>
+                  <div><span>Ödənilib</span><strong>{money(invoice['total_paid'])} AZN</strong></div>
+                  <div style='font-size:18px;margin-top:8px'><span>Qalıq borc</span><strong>{money(invoice['balance'])} AZN</strong></div>
+                </div>
+                <button onclick='window.print()' style='margin-top:24px;padding:10px 20px;background:#0f766e;color:#fff;border:0;border-radius:6px;cursor:pointer;font-size:15px'>Çap et</button>
                 </div></body></html>"""
                 return self.send_text(html, "text/html; charset=utf-8")
 
@@ -1151,6 +1368,12 @@ class Handler(SimpleHTTPRequestHandler):
                 if not self.require_auth(OPS_ROLES):
                     return
                 bk_id = integer(data.get("booking_id")) or None
+                if bk_id:
+                    bk = row("SELECT id, status FROM bookings WHERE id = ?", (bk_id,))
+                    if not bk:
+                        return self.send_error_json("Bron tapılmadı", 404)
+                    if bk["status"] not in ("Reserved", "CheckedIn"):
+                        return self.send_error_json("Sifariş yalnız aktiv bron üçün yaradıla bilər", 400)
                 order_id = execute(
                     "INSERT INTO room_orders (room_id, booking_id, category, description, amount, status, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (
@@ -1194,6 +1417,10 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.send_error_json(
                         f"Bu otaq hazırda '{room_status['cleaning_status']}' statusundadır və bronlana bilməz", 400
                     )
+                try:
+                    total_amount = booking_room_total(integer(data.get("room_id")), ci, co)
+                except ValueError as exc:
+                    return self.send_error_json(str(exc), 404)
                 ok, message = has_capacity(integer(data.get("room_id")), ci, co, integer(data.get("people_count"), 1))
                 if not ok:
                     return self.send_error_json(message, 400)
@@ -1205,7 +1432,7 @@ class Handler(SimpleHTTPRequestHandler):
                         ci, co,
                         str(data.get("status") or "Reserved"),
                         integer(data.get("people_count"), 1),
-                        money(data.get("total_amount")),
+                        total_amount,
                         str(data.get("note") or ""),
                     ),
                 )
@@ -1244,8 +1471,10 @@ class Handler(SimpleHTTPRequestHandler):
                         str(data.get("note") or request_item.get("note") or ""),
                     ),
                 )
-                room_item = row("SELECT nightly_rate FROM rooms WHERE id = ?", (room_id,))
-                total_amount = round(money(room_item["nightly_rate"]) * days_between(ci, co), 2)
+                try:
+                    total_amount = booking_room_total(room_id, ci, co)
+                except ValueError as exc:
+                    return self.send_error_json(str(exc), 404)
                 booking_id = execute(
                     "INSERT INTO bookings (guest_id, room_id, check_in, check_out, status, people_count, total_amount, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (
@@ -1429,6 +1658,12 @@ class Handler(SimpleHTTPRequestHandler):
                 if not self.require_auth(OPS_ROLES):
                     return
                 bk_id = integer(data.get("booking_id")) or None
+                if bk_id:
+                    bk = row("SELECT id, status FROM bookings WHERE id = ?", (bk_id,))
+                    if not bk:
+                        return self.send_error_json("Bron tapılmadı", 404)
+                    if bk["status"] not in ("Reserved", "CheckedIn"):
+                        return self.send_error_json("Sifariş yalnız aktiv bron üçün saxlanıla bilər", 400)
                 execute(
                     "UPDATE room_orders SET room_id = ?, booking_id = ?, category = ?, description = ?, amount = ?, status = ?, note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                     (
@@ -1484,6 +1719,10 @@ class Handler(SimpleHTTPRequestHandler):
                         return self.send_error_json(
                             f"'{existing_bk['status']}' statusundan '{status}' statusuna keçid mümkün deyil", 400
                         )
+                try:
+                    total_amount = booking_room_total(integer(data.get("room_id")), ci, co)
+                except ValueError as exc:
+                    return self.send_error_json(str(exc), 404)
                 ok, message = has_capacity(integer(data.get("room_id")), ci, co, integer(data.get("people_count"), 1), integer(parts[2]))
                 if not ok:
                     return self.send_error_json(message, 400)
@@ -1505,7 +1744,7 @@ class Handler(SimpleHTTPRequestHandler):
                         ci, co,
                         status,
                         integer(data.get("people_count"), 1),
-                        money(data.get("total_amount")),
+                        total_amount,
                         late_fee,
                         actual_check_out_at,
                         str(data.get("note") or ""),

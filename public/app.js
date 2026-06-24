@@ -51,6 +51,17 @@ const state = {
   auditPage: 1,
 };
 
+const BOOKING_STATUS_LABELS = {
+  Reserved: "Rezerv olunub",
+  CheckedIn: "Yerləşib",
+  CheckedOut: "Çıxış edib",
+  Cancelled: "Ləğv olunub",
+};
+
+function bookingStatusLabel(status) {
+  return BOOKING_STATUS_LABELS[status] || status || "–";
+}
+
 // ─── Formatters ───────────────────────────────────────────────
 const fmt = (value) => `${Number(value || 0).toFixed(2)} AZN`;
 
@@ -439,9 +450,10 @@ function renderBookings(list) {
         <td><strong>${escapeHtml(b.guest_name)}</strong><br><small>${escapeHtml(b.guest_phone || "")}</small></td>
         <td>${escapeHtml(b.room_number)} <small>(${b.people_count} nəfər)</small></td>
         <td>${b.check_in} 14:00<br>→ ${b.check_out} 12:00</td>
-        <td><span class="status ${b.status}">${b.status}</span></td>
+        <td><span class="status ${b.status}">${bookingStatusLabel(b.status)}</span></td>
         <td>
           ${fmt(b.total_amount)}
+          ${Number(b.room_order_amount) > 0 ? `<br><small style="color:var(--accent)">+${fmt(b.room_order_amount)} servis</small>` : ""}
           ${Number(b.late_fee) > 0 ? `<br><small style="color:var(--warn)">+${fmt(b.late_fee)} gecikmə</small>` : ""}
           ${estimated > 0 ? `<br><small style="color:var(--warn);opacity:.7">~${fmt(estimated)} (cari)</small>` : ""}
         </td>
@@ -484,7 +496,7 @@ function renderDebtors() {
 function renderPayments() {
   buildTable(
     "#paymentTable",
-    ["Tarix", "Qonaq", "Otaq", "Məbləğ", "Metod", "Qeyd", "Qəbz", "Əməliyyat"],
+    ["Tarix", "Qonaq", "Otaq", "Məbləğ", "Metod", "Qeyd", "Sənəd", "Əməliyyat"],
     state.payments.map((p) => `
       <tr>
         <td>${p.paid_at}</td>
@@ -493,7 +505,7 @@ function renderPayments() {
         <td><strong>${fmt(p.amount)}</strong></td>
         <td>${escapeHtml(p.method)}</td>
         <td>${escapeHtml(p.note || "–")}</td>
-        <td><a href="${appPath(`/api/receipts/${p.id}`)}" target="_blank">🖨 Qəbz</a></td>
+        <td><a href="${appPath(`/api/receipts/${p.id}`)}" target="_blank">🖨 Qəbz</a><br><a href="${appPath(`/api/invoices/${p.booking_id}`)}" target="_blank">📄 Final hesab</a></td>
         <td class="actions">
           ${isAccounting() ? `<button class="btn-edit" data-edit-payment="${p.id}">✎</button>
           <button class="btn-del" data-del-payment="${p.id}">Sil</button>` : ""}
@@ -519,10 +531,10 @@ function renderRoomOrders() {
       <tr>
         <td>${o.created_at.slice(0, 16).replace("T", " ")}</td>
         <td><strong>${escapeHtml(o.room_number)}</strong></td>
-        <td>${o.guest_name ? escapeHtml(o.guest_name) : "–"}</td>
+        <td>${o.guest_name ? `${escapeHtml(o.guest_name)}${o.booking_id ? `<br><small style="color:var(--muted)">Bron #${o.booking_id}</small>` : ""}` : "–"}</td>
         <td><span class="order-cat">${escapeHtml(o.category)}</span></td>
         <td>${escapeHtml(o.description)}</td>
-        <td>${o.amount > 0 ? fmt(o.amount) : "–"}</td>
+        <td>${o.amount > 0 ? `${fmt(o.amount)}${o.booking_id && o.status === "Çatdırıldı" ? `<br><small style="color:var(--accent)">Borca yazılıb</small>` : ""}` : "–"}</td>
         <td><span class="status ${ORDER_STATUS_CLASS[o.status] || ""}">${escapeHtml(o.status)}</span></td>
         <td class="actions">
           ${isOps() ? `
@@ -652,14 +664,18 @@ function renderReminders() {
   const rows = [
     ...state.reminders.debtors.map((d) =>
       `<tr><td><span class="status Cancelled">Borc</span></td><td><strong>${escapeHtml(d.guest_name)}</strong></td>
-       <td style="color:var(--danger);font-weight:700">${fmt(d.balance)}</td>
-       <td><a href="${escapeHtml(d.whatsapp_url || "")}" target="_blank">WhatsApp</a></td></tr>`),
+       <td style="color:var(--danger);font-weight:700">${fmt(d.balance)}<br><small style="color:var(--muted)">Bron #${d.id} / Otaq ${escapeHtml(d.room_number || "")}</small></td>
+       <td>
+         ${d.whatsapp_url ? `<a href="${escapeHtml(d.whatsapp_url)}" target="_blank">WhatsApp</a><br>` : ""}
+         ${d.sms_url ? `<a href="${escapeHtml(d.sms_url)}">SMS</a><br>` : ""}
+         <button type="button" class="btn-edit" data-copy-message="${d.id}">Mətni kopyala</button>
+       </td></tr>`),
     ...state.reminders.arrivals.map((b) =>
-      `<tr><td><span class="status Reserved">Giriş</span></td><td>${escapeHtml(b.guest_name)}</td>
-       <td>${b.check_in}</td><td>–</td></tr>`),
+      `<tr><td><span class="status Reserved">${bookingStatusLabel("Reserved")}</span></td><td>${escapeHtml(b.guest_name)}</td>
+       <td>${b.check_in}<br><small style="color:var(--muted)">Bron #${b.id} / Otaq ${escapeHtml(b.room_number || "")}</small></td><td>–</td></tr>`),
     ...state.reminders.departures.map((b) =>
-      `<tr><td><span class="status CheckedOut">Çıxış</span></td><td>${escapeHtml(b.guest_name)}</td>
-       <td>${b.check_out}</td><td>–</td></tr>`),
+      `<tr><td><span class="status CheckedOut">${bookingStatusLabel("CheckedOut")}</span></td><td>${escapeHtml(b.guest_name)}</td>
+       <td>${b.check_out}<br><small style="color:var(--muted)">Bron #${b.id} / Otaq ${escapeHtml(b.room_number || "")}</small></td><td>–</td></tr>`),
   ];
   buildTable("#reminderTable", ["Tip", "Qonaq", "Məlumat", "Link"], rows);
 }
@@ -891,6 +907,8 @@ function setTodayDefaults() {
   const calTo   = document.getElementById("calTo");
   if (calFrom && !calFrom.value) calFrom.value = today();
   if (calTo   && !calTo.value)   calTo.value   = dateOffset(14);
+  const reminderDate = document.getElementById("reminderDateFilter");
+  if (reminderDate && !reminderDate.value) reminderDate.value = t;
 }
 
 // ─── Auto-calculate booking amount ───────────────────────────
@@ -974,7 +992,7 @@ function editBooking(id) {
       <label>Giriş<input name="check_in" type="date" value="${b.check_in}" required /></label>
       <label>Çıxış<input name="check_out" type="date" value="${b.check_out}" required /></label>
       <label>Nəfər<input name="people_count" type="number" min="1" value="${b.people_count}" required /></label>
-      <label>Məbləğ<input name="total_amount" type="number" step="0.01" value="${b.total_amount}" required /></label>
+      <label>Otaq haqqı<input name="total_amount" type="number" step="0.01" value="${b.total_amount}" required readonly /></label>
       <input type="hidden" name="status" value="${escapeHtml(b.status)}" />
       <input type="hidden" name="late_fee" value="${Number(b.late_fee || 0).toFixed(2)}" />
       <label class="wide">Qeyd<input name="note" value="${escapeHtml(b.note || "")}" /></label>
@@ -1020,7 +1038,7 @@ function convertRequestToBooking(id) {
       <label>Telefon<input value="${escapeHtml(req.phone || "")}" disabled /></label>
       ${requestedCat ? `<label class="wide">İstənilən kateqoriya<input value="${escapeHtml(requestedCat)}" disabled style="color:var(--accent);font-weight:600" /></label>` : ""}
       <label>Otaq<select name="room_id">${roomOpts}</select></label>
-      <label>Status<select name="status"><option>Reserved</option><option>CheckedIn</option></select></label>
+      <label>Status<select name="status"><option value="Reserved">Rezerv olunub</option><option value="CheckedIn">Yerləşib</option></select></label>
       <label>Giriş<input name="check_in" type="date" value="${escapeHtml(req.check_in || today())}" required /></label>
       <label>Çıxış<input name="check_out" type="date" value="${escapeHtml(req.check_out || dateOffset(1))}" required /></label>
       <label>Nəfər<input name="people_count" type="number" min="1" value="${req.people_count || 1}" required /></label>
@@ -1213,6 +1231,31 @@ document.getElementById("requestFilterClearBtn")?.addEventListener("click", () =
   if (statusEl) statusEl.value = "";
   if (handlerEl) handlerEl.value = "";
   renderRequests();
+});
+document.getElementById("reminderFilterBtn")?.addEventListener("click", async () => {
+  const date = document.getElementById("reminderDateFilter")?.value || "";
+  const q = document.getElementById("reminderSearchFilter")?.value.trim() || "";
+  const bookingId = document.getElementById("reminderBookingFilter")?.value || "";
+  const params = new URLSearchParams();
+  if (date) params.set("date", date);
+  if (q) params.set("q", q);
+  if (bookingId) params.set("booking_id", bookingId);
+  try {
+    state.reminders = await api(`/api/reminders?${params.toString()}`);
+    renderReminders();
+  } catch (err) { toast(err.message, "error"); }
+});
+document.getElementById("reminderFilterClearBtn")?.addEventListener("click", async () => {
+  const dateEl = document.getElementById("reminderDateFilter");
+  const searchEl = document.getElementById("reminderSearchFilter");
+  const bookingEl = document.getElementById("reminderBookingFilter");
+  if (dateEl) dateEl.value = today();
+  if (searchEl) searchEl.value = "";
+  if (bookingEl) bookingEl.value = "";
+  try {
+    state.reminders = await api(`/api/reminders?date=${today()}`);
+    renderReminders();
+  } catch (err) { toast(err.message, "error"); }
 });
 
 // ─── Calendar controls ────────────────────────────────────────
@@ -1462,6 +1505,19 @@ document.querySelector("#bookingTable").addEventListener("click", async (e) => {
       toast("Bron silindi", "warn");
       await loadAll();
     } catch (err) { toast(err.message, "error"); }
+  }
+});
+
+document.querySelector("#reminderTable").addEventListener("click", async (e) => {
+  const copyBtn = e.target.closest("[data-copy-message]");
+  if (!copyBtn) return;
+  const item = state.reminders.debtors.find((d) => String(d.id) === String(copyBtn.dataset.copyMessage));
+  if (!item?.message_text) return;
+  try {
+    await navigator.clipboard.writeText(item.message_text);
+    toast("Mesaj mətni kopyalandı");
+  } catch (err) {
+    toast("Mesaj mətni kopyalanmadı", "error");
   }
 });
 

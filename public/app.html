@@ -132,10 +132,10 @@
               <input class="search-input" id="bookingSearch" placeholder="Axtarış (ad, otaq, tel)…" type="search" />
               <select class="filter-select" id="bookingStatusFilter">
                 <option value="">Bütün statuslar</option>
-                <option value="Reserved">Reserved</option>
-                <option value="CheckedIn">CheckedIn</option>
-                <option value="CheckedOut">CheckedOut</option>
-                <option value="Cancelled">Cancelled</option>
+                <option value="Reserved">Rezerv olunub</option>
+                <option value="CheckedIn">Yerləşib</option>
+                <option value="CheckedOut">Çıxış edib</option>
+                <option value="Cancelled">Ləğv olunub</option>
               </select>
             </div>
           </div>
@@ -145,8 +145,8 @@
             <label>Giriş<input name="check_in" type="date" required /></label>
             <label>Çıxış<input name="check_out" type="date" required /></label>
             <label>Nəfər<input name="people_count" type="number" min="1" value="1" required /></label>
-            <label>Məbləğ (AZN)<input name="total_amount" type="number" min="0" step="0.01" required placeholder="Avtomatik hesablanır" /></label>
-            <label>Status<select name="status"><option>Reserved</option><option>CheckedIn</option></select></label>
+            <label>Otaq haqqı (AZN)<input name="total_amount" type="number" min="0" step="0.01" required placeholder="Avtomatik hesablanır" readonly /></label>
+            <label>Status<select name="status"><option value="Reserved">Rezerv olunub</option><option value="CheckedIn">Yerləşib</option></select></label>
             <label>Qeyd<input name="note" placeholder="Opsional" /></label>
             <button type="submit">+ Bron əlavə et</button>
           </form>
@@ -320,6 +320,13 @@
         <!-- ── Reminders ──────────────────────────────── -->
         <section class="panel accounting-only" id="reminders">
           <div class="panel-head"><h2>SMS / WhatsApp xatırlatmalar</h2></div>
+          <div class="expense-filters">
+            <input type="date" id="reminderDateFilter" title="Tarix" />
+            <input id="reminderSearchFilter" type="search" placeholder="Qonaq, tel, otaq və ya bron #" />
+            <input id="reminderBookingFilter" type="number" min="1" placeholder="Bron #" />
+            <button id="reminderFilterBtn" type="button">Filtrə et</button>
+            <button id="reminderFilterClearBtn" type="button">Sıfırla</button>
+          </div>
           <div class="table-wrap"><table id="reminderTable"></table></div>
         </section>
 
