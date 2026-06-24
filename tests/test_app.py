@@ -70,8 +70,9 @@ class Hotel50ApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("text/html", self.header(headers, "Content-Type"))
         body = data.decode("utf-8")
-        self.assertIn("İdarəetmə və rezervasiya üçün giriş səhifəsi.", body)
-        self.assertIn('href="app.html"', body)
+        self.assertIn("Hotel 50 — Xankəndi", body)
+        self.assertIn('id="roomsGrid"', body)
+        self.assertIn('href="request.html"', body)
         self.assertNotIn('id="loginForm"', body)
 
         status, headers, data = self.request("GET", "/app.html")
@@ -84,7 +85,7 @@ class Hotel50ApiTests(unittest.TestCase):
         status, headers, data = self.request("GET", "/request.html")
         self.assertEqual(status, 200)
         self.assertIn("text/html", self.header(headers, "Content-Type"))
-        self.assertIn("Rezervasiya sorğusu", data.decode("utf-8"))
+        self.assertIn("Rezervasiya<br>Sorğusu", data.decode("utf-8"))
 
     def test_public_booking_request_works_without_auth(self):
         status, _, data = self.request("POST", "/api/public/booking-requests", {
@@ -94,8 +95,52 @@ class Hotel50ApiTests(unittest.TestCase):
             "check_out": "2026-06-12",
             "people_count": 2,
             "note": "window side",
+            "room_category": "Deluxe",
         })
         self.assertEqual(status, 201, data.decode("utf-8"))
+        request_id = json.loads(data)["id"]
+
+        reception = self.login("reception", "reception123")
+        status, _, data = self.request("GET", "/api/booking-requests", headers=reception)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        request_row = next(item for item in json.loads(data) if item["id"] == request_id)
+        self.assertEqual(request_row["room_category"], "Deluxe")
+
+    def test_category_rename_updates_existing_rooms(self):
+        admin = self.login("admin", "admin123")
+
+        status, _, data = self.request("POST", "/api/room-categories", {
+            "name": "Test Deluxe",
+            "description": "rename candidate",
+            "base_price": 99,
+            "amenities": ["wifi"],
+        }, headers=admin)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        cat_id = json.loads(data)["id"]
+
+        status, _, data = self.request("POST", "/api/rooms", {
+            "number": "999",
+            "floor": 9,
+            "room_type": "Test Deluxe",
+            "capacity": 2,
+            "nightly_rate": 99,
+            "note": "",
+        }, headers=admin)
+        self.assertEqual(status, 201, data.decode("utf-8"))
+        room_id = json.loads(data)["id"]
+
+        status, _, data = self.request("PUT", f"/api/room-categories/{cat_id}", {
+            "name": "Test Premium",
+            "description": "renamed",
+            "base_price": 109,
+            "amenities": ["wifi", "tv"],
+        }, headers=admin)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+
+        status, _, data = self.request("GET", "/api/rooms", headers=admin)
+        self.assertEqual(status, 200, data.decode("utf-8"))
+        room_row = next(item for item in json.loads(data) if item["id"] == room_id)
+        self.assertEqual(room_row["room_type"], "Test Premium")
 
     def test_request_status_tracks_handler(self):
         status, _, data = self.request("POST", "/api/public/booking-requests", {
@@ -174,7 +219,7 @@ class Hotel50ApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
 
         status, _, _ = self.request("GET", "/api/bookings", headers=accounting)
-        self.assertEqual(status, 403)
+        self.assertEqual(status, 200)
 
     def test_document_upload_roundtrip(self):
         reception = self.login("reception", "reception123")

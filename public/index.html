@@ -398,24 +398,104 @@
       }
       .room-card {
         border: 1px solid rgba(190,152,86,.14); border-radius: 3px;
-        padding: 32px 28px 28px;
+        padding: 0;
         background: rgba(10,24,16,.55);
         position: relative; overflow: hidden;
         display: flex; flex-direction: column;
-        transition: border-color .3s, transform .3s;
+        transition: border-color .3s, transform .3s, box-shadow .3s;
+        cursor: pointer;
       }
       .room-card::after {
         content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
         background: linear-gradient(90deg, transparent, rgba(190,152,86,.4), transparent);
         opacity: 0; transition: opacity .3s;
       }
-      .room-card:hover { border-color: rgba(190,152,86,.38); transform: translateY(-4px); }
+      .room-card:hover { border-color: rgba(190,152,86,.38); transform: translateY(-4px); box-shadow: 0 26px 42px -24px rgba(0,0,0,.72); }
       .room-card:hover::after { opacity: 1; }
-      .room-card-name { font-family: var(--serif); font-size: 20px; letter-spacing: .02em; color: var(--accent); margin-bottom: 6px; }
-      .room-card-price { font-size: 26px; font-weight: 700; color: #fff; margin-bottom: 10px; line-height: 1; }
+      .room-card-media {
+        position: relative;
+        aspect-ratio: 16 / 10;
+        overflow: hidden;
+        background: rgba(255,255,255,.04);
+      }
+      .room-card-media img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        transition: transform .45s var(--ease-fig), filter .45s var(--ease-fig);
+      }
+      .room-card:hover .room-card-media img {
+        transform: scale(1.06);
+        filter: saturate(1.04);
+      }
+      .room-card-overlay {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(6,16,12,.02) 0%, rgba(6,16,12,.3) 52%, rgba(6,16,12,.85) 100%);
+      }
+      .room-card-meta {
+        position: absolute;
+        left: 18px;
+        right: 18px;
+        bottom: 16px;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 14px;
+        min-height: 68px;
+      }
+      .room-card-kicker {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .24em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,.72);
+        margin-bottom: 8px;
+      }
+      .room-card-body {
+        padding: 26px 28px 28px;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+      }
+      .room-card-name {
+        font-family: var(--serif);
+        font-size: 20px;
+        letter-spacing: .02em;
+        color: var(--accent);
+        margin-bottom: 8px;
+        min-height: 48px;
+        display: flex;
+        align-items: flex-end;
+      }
+      .room-card-price {
+        font-size: 26px;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 10px;
+        line-height: 1;
+        min-height: 34px;
+        display: flex;
+        align-items: flex-end;
+      }
       .room-card-price small { font-size: 13px; font-weight: 400; color: rgba(255,255,255,.4); }
-      .room-card-desc { font-size: 13px; color: rgba(255,255,255,.42); margin-bottom: 20px; line-height: 1.6; }
-      .room-amenities { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; flex: 1; }
+      .room-card-desc {
+        font-size: 13px;
+        color: rgba(255,255,255,.42);
+        margin-bottom: 20px;
+        line-height: 1.6;
+        min-height: 64px;
+      }
+      .room-amenities {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: flex-start;
+        gap: 6px;
+        margin-bottom: 24px;
+        min-height: 92px;
+        flex: 1;
+      }
       .room-amenity {
         font-size: 11px; padding: 4px 10px;
         border: 1px solid rgba(190,152,86,.18); border-radius: 2px;
@@ -429,9 +509,223 @@
         transition: background .22s, border-color .22s, color .22s;
       }
       .room-cta-btn:hover { background: rgba(190,152,86,.12); border-color: rgba(190,152,86,.6); color: #e8c97a; }
+      .room-detail-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: rgba(255,255,255,.74);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .2em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+      .room-detail-btn svg { transition: transform .22s var(--ease-fig); }
+      .room-card:hover .room-detail-btn svg { transform: translateX(4px); }
+      .room-card-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-top: auto;
+        padding-top: 14px;
+        border-top: 1px solid rgba(255,255,255,.06);
+      }
+      .room-spotlight {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 28px;
+        background: rgba(3,8,6,.72);
+        backdrop-filter: blur(16px);
+      }
+      .room-spotlight.show { display: flex; }
+      .room-spotlight-shell {
+        width: min(1120px, 100%);
+        max-height: min(86vh, 920px);
+        overflow: auto;
+        border: 1px solid rgba(190,152,86,.22);
+        border-radius: 4px;
+        background: #0b1610;
+        box-shadow: 0 48px 90px -30px rgba(0,0,0,.76);
+      }
+      .room-spotlight-grid {
+        display: grid;
+        grid-template-columns: 1.08fr .92fr;
+      }
+      .room-spotlight-media {
+        padding: 24px;
+        border-right: 1px solid rgba(255,255,255,.06);
+      }
+      .room-spotlight-main {
+        aspect-ratio: 16 / 10;
+        border-radius: 3px;
+        overflow: hidden;
+        background: rgba(255,255,255,.03);
+      }
+      .room-spotlight-main img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .room-spotlight-thumbs {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .room-thumb {
+        padding: 0;
+        border: 1px solid rgba(255,255,255,.08);
+        border-radius: 3px;
+        overflow: hidden;
+        background: #09120d;
+        cursor: pointer;
+      }
+      .room-thumb.active { border-color: rgba(190,152,86,.62); }
+      .room-thumb img {
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        object-fit: cover;
+        display: block;
+      }
+      .room-spotlight-info {
+        padding: 28px 28px 26px;
+        display: flex;
+        flex-direction: column;
+      }
+      .room-spotlight-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+      }
+      .room-spotlight-kicker {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .28em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 14px;
+      }
+      .room-spotlight-title {
+        font-family: var(--serif);
+        font-size: 42px;
+        line-height: 1.02;
+        color: #fff;
+        margin-bottom: 12px;
+      }
+      .room-spotlight-text {
+        font-size: 14px;
+        line-height: 1.78;
+        color: rgba(255,255,255,.54);
+      }
+      .room-spotlight-close {
+        width: 42px;
+        height: 42px;
+        border: 1px solid rgba(255,255,255,.14);
+        border-radius: 3px;
+        background: rgba(255,255,255,.04);
+        color: rgba(255,255,255,.78);
+        cursor: pointer;
+        font-size: 20px;
+      }
+      .room-spotlight-stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin: 26px 0;
+      }
+      .room-stat {
+        padding: 14px 14px 16px;
+        border: 1px solid rgba(255,255,255,.06);
+        border-radius: 3px;
+        background: rgba(255,255,255,.02);
+      }
+      .room-stat span {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .22em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,.36);
+      }
+      .room-stat strong {
+        font-size: 20px;
+        color: #fff;
+        font-weight: 700;
+      }
+      .room-spotlight-amenities {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 28px;
+      }
+      .room-spotlight-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: auto;
+      }
+      .room-spotlight-actions a,
+      .room-spotlight-actions button {
+        min-height: 46px;
+        padding: 0 18px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .2em;
+        text-transform: uppercase;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .room-spotlight-book {
+        border: 0;
+        background: var(--accent);
+        color: #fff;
+      }
+      .room-spotlight-ghost {
+        border: 1px solid rgba(190,152,86,.28);
+        background: transparent;
+        color: var(--accent);
+      }
       @media (max-width: 920px) {
         .rooms-section { padding-left: 28px; padding-right: 28px; }
         .rooms-section::before { left: 28px; right: 28px; }
+        .room-spotlight-grid { grid-template-columns: 1fr; }
+        .room-spotlight-media { border-right: 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+      }
+      @media (max-width: 640px) {
+        .room-spotlight {
+          padding: 14px;
+        }
+        .room-spotlight-media,
+        .room-spotlight-info {
+          padding: 18px;
+        }
+        .room-spotlight-title {
+          font-size: 30px;
+        }
+        .room-spotlight-stats {
+          grid-template-columns: 1fr;
+        }
+        .room-card-actions {
+          align-items: stretch;
+          flex-direction: column;
+        }
+        .room-cta-btn,
+        .room-detail-btn {
+          width: 100%;
+          justify-content: center;
+        }
       }
 
       .features-grid {
@@ -607,6 +901,10 @@
         background: rgba(190,152,86,.06);
         transition: border-color .25s, background .25s;
       }
+      a.contact-icon {
+        color: #fff;
+        text-decoration: none;
+      }
       .contact-item:hover .contact-icon {
         border-color: rgba(190,152,86,.5);
         background: rgba(190,152,86,.12);
@@ -624,6 +922,13 @@
         transition: color .2s;
       }
       a.contact-value:hover { color: var(--accent); }
+      .contact-reveal-note {
+        margin-top: 6px;
+        font-size: 10px;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,.22);
+      }
       .social-row {
         display: flex; gap: 10px; align-items: center;
       }
@@ -808,6 +1113,39 @@
       </div>
     </section>
 
+    <div class="room-spotlight" id="roomSpotlight" aria-hidden="true">
+      <div class="room-spotlight-shell">
+        <div class="room-spotlight-grid">
+          <div class="room-spotlight-media">
+            <div class="room-spotlight-main">
+              <img id="spotlightMainImage" alt="Otaq şəkli" />
+            </div>
+            <div class="room-spotlight-thumbs" id="spotlightThumbs"></div>
+          </div>
+          <div class="room-spotlight-info">
+            <div class="room-spotlight-top">
+              <div>
+                <div class="room-spotlight-kicker">Otaq detalları</div>
+                <div class="room-spotlight-title" id="spotlightTitle"></div>
+              </div>
+              <button class="room-spotlight-close" id="spotlightClose" type="button" aria-label="Bağla">×</button>
+            </div>
+            <p class="room-spotlight-text" id="spotlightText"></p>
+            <div class="room-spotlight-stats">
+              <div class="room-stat"><span>Qiymət</span><strong id="spotlightPrice"></strong></div>
+              <div class="room-stat"><span>Tutum</span><strong id="spotlightCapacity"></strong></div>
+              <div class="room-stat"><span>Uyğundur</span><strong id="spotlightBestFor"></strong></div>
+            </div>
+            <div class="room-spotlight-amenities" id="spotlightAmenities"></div>
+            <div class="room-spotlight-actions">
+              <a class="room-spotlight-book" id="spotlightBook" href="request.html">Rezervasiya et</a>
+              <button class="room-spotlight-ghost" id="spotlightGhost" type="button">Bağla</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══ CTA CARD ══════════════════════════════════════════════════ -->
     <section class="cta-section">
       <div class="cta-grid stagger">
@@ -838,7 +1176,8 @@
           <div class="contact-icon">📞</div>
           <div>
             <p class="contact-label">Telefon</p>
-            <a href="tel:+994XXXXXXXXX" class="contact-value">+994 XX XXX XX XX</a>
+            <a href="tel:+994500000000" class="contact-value" id="contactPhone" data-phone="+994 50 000 00 00" data-revealed="false">Telefonu göstər</a>
+            <div class="contact-reveal-note" id="contactPhoneNote">Bas, nömrə görünsün</div>
           </div>
         </div>
         <div class="contact-item">
@@ -849,10 +1188,10 @@
           </div>
         </div>
         <div class="contact-item">
-          <div class="contact-icon">📍</div>
+          <a class="contact-icon" href="https://www.google.com/maps/search/?api=1&query=Xank%C9%99ndi%2C%20Az%C9%99rbaycan" target="_blank" rel="noopener" aria-label="Xəritədə aç">📍</a>
           <div>
             <p class="contact-label">Ünvan</p>
-            <span class="contact-value">Xankəndi, Azərbaycan</span>
+            <a class="contact-value" href="https://www.google.com/maps/search/?api=1&query=Xank%C9%99ndi%2C%20Az%C9%99rbaycan" target="_blank" rel="noopener">Xankəndi, Azərbaycan</a>
           </div>
         </div>
         <div class="contact-item">
@@ -893,37 +1232,199 @@
 
     <script>
       // ── Room categories ────────────────────────────────────────────
+      const APP_BASE = window.location.pathname.startsWith("/hotel50/") ? "/hotel50" : "";
+      const appPath = (path) => `${APP_BASE}${path}`;
       const AMENITY_LABELS = {
         wifi: "Wi-Fi", breakfast: "Səhər yeməyi", bath: "Özəl hamam",
         tv: "Televizor", ac: "Kondisioner", minibar: "Mini-bar",
         roomservice: "Otaq xidməti", safe: "Seyf",
         balcony: "Balkon", cityview: "Şəhər mənzərəsi", parking: "Parkinq",
       };
+      const ROOM_VISUALS = {
+        Standard: {
+          tier: "Essential",
+          bestFor: "1-2 qonaq",
+          summary: "Sakit qalmaq, iş səfəri və qısa gecələmə üçün klassik otaq həlli.",
+          images: [
+            "https://images.unsplash.com/photo-1522798514-97ceb8c4f1c8?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?auto=format&fit=crop&w=1200&q=80"
+          ]
+        },
+        Superior: {
+          tier: "Comfort",
+          bestFor: "Rahat qalma",
+          summary: "Geniş hərəkət sahəsi və daha komfortlu daxili quruluşla gündəlik qalma üçün balanslı seçim.",
+          images: [
+            "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1618773928121-c32242e63f39?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1595576508898-0ad5c879a061?auto=format&fit=crop&w=1200&q=80"
+          ]
+        },
+        Deluxe: {
+          tier: "Premium",
+          bestFor: "Premium qalma",
+          summary: "Daha ifadəli interyer, mənzərə və geniş komfort zonası axtaran qonaqlar üçün uyğun seçim.",
+          images: [
+            "https://images.unsplash.com/photo-1445019980597-93fa8acb246c?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1400&q=80",
+            "https://images.unsplash.com/photo-1455587734955-081b22074882?auto=format&fit=crop&w=1200&q=80"
+          ]
+        },
+        Suite: {
+          tier: "Signature",
+          bestFor: "Uzun və lüks qalma",
+          summary: "Ayrı oturma hissəsi, yüksək komfort və daha prestijli qalmaq istəyən qonaqlar üçün süit həlli.",
+          images: [
+            "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=1400&q=80",
+            "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1400&q=80"
+          ]
+        },
+        Family: {
+          tier: "Family",
+          bestFor: "Ailə qalması",
+          summary: "Bir neçə nəfərlik yerləşmə, əlavə rahatlıq və ailə üçün uyğun otaq planı.",
+          images: [
+            "https://images.unsplash.com/photo-1512918728675-ed5a9ecdebfd?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=800&q=80"
+          ]
+        },
+        fallback: {
+          tier: "Collection",
+          bestFor: "Qonaqlar",
+          summary: "Rahat qalmaq üçün əsas imkanlarla təchiz olunmuş otaq.",
+          images: [
+            "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=1200&q=80"
+          ]
+        }
+      };
+      const spotlightEl = document.getElementById("roomSpotlight");
+      const spotlightMainImage = document.getElementById("spotlightMainImage");
+      const spotlightThumbs = document.getElementById("spotlightThumbs");
+      const spotlightTitle = document.getElementById("spotlightTitle");
+      const spotlightText = document.getElementById("spotlightText");
+      const spotlightPrice = document.getElementById("spotlightPrice");
+      const spotlightCapacity = document.getElementById("spotlightCapacity");
+      const spotlightBestFor = document.getElementById("spotlightBestFor");
+      const spotlightAmenities = document.getElementById("spotlightAmenities");
+      const spotlightBook = document.getElementById("spotlightBook");
+      let roomCatalog = [];
+      let currentSpotlightImages = [];
       function escHtml(s) {
         return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       }
+      function roomVisual(category) {
+        return ROOM_VISUALS[category] || ROOM_VISUALS.fallback;
+      }
+      function setSpotlightImage(src, thumbIndex = 0) {
+        spotlightMainImage.src = src;
+        spotlightThumbs.querySelectorAll(".room-thumb").forEach((el, index) => {
+          el.classList.toggle("active", index === thumbIndex);
+        });
+      }
+      function openRoomSpotlight(categoryName) {
+        const room = roomCatalog.find((item) => item.name === categoryName);
+        if (!room) return;
+        const visuals = roomVisual(room.name);
+        currentSpotlightImages = visuals.images;
+        spotlightTitle.textContent = room.name;
+        spotlightText.textContent = room.description || visuals.summary;
+        spotlightPrice.textContent = room.base_price > 0 ? `${Number(room.base_price).toFixed(0)} AZN` : "Sorğu ilə";
+        spotlightCapacity.textContent = room.name === "Family" ? "3-4 nəfər" : room.name === "Suite" ? "2-3 nəfər" : "1-2 nəfər";
+        spotlightBestFor.textContent = visuals.bestFor;
+        spotlightAmenities.innerHTML = (Array.isArray(room.amenities) ? room.amenities : []).map((key) =>
+          `<span class="room-amenity">${escHtml(AMENITY_LABELS[key] || key)}</span>`
+        ).join("");
+        spotlightThumbs.innerHTML = currentSpotlightImages.map((src, index) => `
+          <button class="room-thumb ${index === 0 ? "active" : ""}" type="button" data-thumb-index="${index}">
+            <img src="${src}" alt="${escHtml(room.name)} şəkli ${index + 1}" loading="lazy" />
+          </button>
+        `).join("");
+        spotlightBook.href = appPath(`/request.html?room_category=${encodeURIComponent(room.name || "")}`);
+        setSpotlightImage(currentSpotlightImages[0], 0);
+        spotlightEl.classList.add("show");
+        spotlightEl.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+      }
+      function closeRoomSpotlight() {
+        spotlightEl.classList.remove("show");
+        spotlightEl.setAttribute("aria-hidden", "true");
+        document.body.style.overflow = "";
+      }
       async function loadRooms() {
         try {
-          const cats = await fetch("/api/public/room-categories").then((r) => r.json());
+          const cats = await fetch(appPath("/api/public/room-categories")).then((r) => r.json());
           const grid = document.getElementById("roomsGrid");
           if (!Array.isArray(cats) || !cats.length) { grid.innerHTML = ""; return; }
+          roomCatalog = cats;
           grid.innerHTML = cats.map((c) => {
             const ams = Array.isArray(c.amenities) ? c.amenities : [];
-            return `<div class="room-card">
-              <div class="room-card-name">${escHtml(c.name)}</div>
-              ${c.base_price > 0
-                ? `<div class="room-card-price">${Number(c.base_price).toFixed(0)} <small>AZN / gecə</small></div>`
-                : ""}
-              ${c.description ? `<p class="room-card-desc">${escHtml(c.description)}</p>` : ""}
-              <div class="room-amenities">
-                ${ams.map((k) => `<span class="room-amenity">${escHtml(AMENITY_LABELS[k] || k)}</span>`).join("")}
+            const roomCategory = encodeURIComponent(c.name || "");
+            const visuals = roomVisual(c.name);
+            return `<article class="room-card" data-room-category="${escHtml(c.name)}">
+              <div class="room-card-media">
+                <img src="${visuals.images[0]}" alt="${escHtml(c.name)} otağı" loading="lazy" />
+                <div class="room-card-overlay"></div>
+                <div class="room-card-meta">
+                  <div>
+                    <div class="room-card-kicker">${escHtml(visuals.tier)}</div>
+                    <div class="room-card-price">${c.base_price > 0 ? `${Number(c.base_price).toFixed(0)} <small>AZN / gecə</small>` : `Sorğu ilə`}</div>
+                  </div>
+                </div>
               </div>
-              <a href="request.html" class="room-cta-btn">Rezervasiya et</a>
-            </div>`;
+              <div class="room-card-body">
+                <div class="room-card-name">${escHtml(c.name)}</div>
+                ${c.description ? `<p class="room-card-desc">${escHtml(c.description)}</p>` : `<p class="room-card-desc">${escHtml(visuals.summary)}</p>`}
+                <div class="room-amenities">
+                  ${ams.map((k) => `<span class="room-amenity">${escHtml(AMENITY_LABELS[k] || k)}</span>`).join("")}
+                </div>
+                <div class="room-card-actions">
+                  <button class="room-detail-btn" type="button" data-room-open="${escHtml(c.name)}">
+                    Ətraflı bax
+                    <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+                      <path d="M1 6h14M9 1l6 5-6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <a href="${appPath(`/request.html?room_category=${roomCategory}`)}" class="room-cta-btn" data-room-book="${escHtml(c.name)}">Rezervasiya et</a>
+                </div>
+              </div>
+            </article>`;
           }).join("");
         } catch(_) {}
       }
       loadRooms();
+      document.getElementById("roomsGrid").addEventListener("click", (event) => {
+        const bookLink = event.target.closest("[data-room-book]");
+        if (bookLink) {
+          event.stopPropagation();
+          return;
+        }
+        const openBtn = event.target.closest("[data-room-open]");
+        if (openBtn) {
+          openRoomSpotlight(openBtn.dataset.roomOpen);
+          return;
+        }
+        const card = event.target.closest("[data-room-category]");
+        if (card) openRoomSpotlight(card.dataset.roomCategory);
+      });
+      spotlightThumbs.addEventListener("click", (event) => {
+        const thumb = event.target.closest("[data-thumb-index]");
+        if (!thumb) return;
+        const index = Number(thumb.dataset.thumbIndex || 0);
+        setSpotlightImage(currentSpotlightImages[index], index);
+      });
+      document.getElementById("spotlightClose").addEventListener("click", closeRoomSpotlight);
+      document.getElementById("spotlightGhost").addEventListener("click", closeRoomSpotlight);
+      spotlightEl.addEventListener("click", (event) => {
+        if (event.target === spotlightEl) closeRoomSpotlight();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && spotlightEl.classList.contains("show")) closeRoomSpotlight();
+      });
 
       // ── Custom cursor ──────────────────────────────────────────────
       const dot  = document.querySelector('.cursor-dot');
@@ -946,6 +1447,16 @@
       document.querySelectorAll('a,button').forEach(el => {
         el.addEventListener('mouseenter', () => document.body.classList.add('cursor-hover'));
         el.addEventListener('mouseleave', () => document.body.classList.remove('cursor-hover'));
+      });
+
+      const contactPhone = document.getElementById("contactPhone");
+      const contactPhoneNote = document.getElementById("contactPhoneNote");
+      contactPhone?.addEventListener("click", (event) => {
+        if (contactPhone.dataset.revealed === "true") return;
+        event.preventDefault();
+        contactPhone.textContent = contactPhone.dataset.phone || "+994 50 000 00 00";
+        contactPhone.dataset.revealed = "true";
+        if (contactPhoneNote) contactPhoneNote.textContent = "Yenidən bas, zəng getsin";
       });
 
       // ── IntersectionObserver — reveal on scroll ────────────────────

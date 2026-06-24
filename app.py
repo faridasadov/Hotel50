@@ -1120,10 +1120,13 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.send_error_json("Kateqoriya adı tələb olunur", 400)
                 amenities = data.get("amenities") or []
                 amenities_str = json.dumps(list(amenities) if isinstance(amenities, list) else [])
-                cat_id = execute(
-                    "INSERT INTO room_categories (name, description, base_price, amenities) VALUES (?, ?, ?, ?)",
-                    (name, str(data.get("description") or ""), money(data.get("base_price")), amenities_str),
-                )
+                try:
+                    cat_id = execute(
+                        "INSERT INTO room_categories (name, description, base_price, amenities) VALUES (?, ?, ?, ?)",
+                        (name, str(data.get("description") or ""), money(data.get("base_price")), amenities_str),
+                    )
+                except sqlite3.IntegrityError:
+                    return self.send_error_json("Bu kateqoriya adı artıq mövcuddur", 400)
                 audit(self.current_user["username"], "room_category.created", "room_category", cat_id)
                 return self.send_json({"id": cat_id}, 201)
 
@@ -1385,10 +1388,22 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.send_error_json("Kateqoriya adı tələb olunur", 400)
                 amenities = data.get("amenities") or []
                 amenities_str = json.dumps(list(amenities) if isinstance(amenities, list) else [])
-                execute(
-                    "UPDATE room_categories SET name = ?, description = ?, base_price = ?, amenities = ? WHERE id = ?",
-                    (name, str(data.get("description") or ""), money(data.get("base_price")), amenities_str, integer(parts[2])),
-                )
+                cat_id = integer(parts[2])
+                current = row("SELECT name FROM room_categories WHERE id = ?", (cat_id,))
+                if not current:
+                    return self.send_error_json("Kateqoriya tapılmadı", 404)
+                old_name = str(current["name"] or "")
+                try:
+                    with connect() as db:
+                        db.execute(
+                            "UPDATE room_categories SET name = ?, description = ?, base_price = ?, amenities = ? WHERE id = ?",
+                            (name, str(data.get("description") or ""), money(data.get("base_price")), amenities_str, cat_id),
+                        )
+                        if old_name and old_name != name:
+                            db.execute("UPDATE rooms SET room_type = ? WHERE room_type = ?", (name, old_name))
+                        db.commit()
+                except sqlite3.IntegrityError:
+                    return self.send_error_json("Bu kateqoriya adı artıq mövcuddur", 400)
                 audit(self.current_user["username"], "room_category.updated", "room_category", parts[2])
                 return self.send_json({"ok": True})
 

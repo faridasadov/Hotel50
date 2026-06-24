@@ -316,11 +316,11 @@
     <div class="page-grain"></div>
 
     <nav>
-      <a class="nav-logo" href="/">
+      <a class="nav-logo" href="#" id="homeLink">
         <span class="nav-bar"></span>
         Hotel 50
       </a>
-      <a class="nav-back" href="/">
+      <a class="nav-back" href="#" id="backLink">
         <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
           <path d="M15 6H1M7 1L1 6l6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
@@ -407,12 +407,16 @@
 
       // ── Form ────────────────────────────────────────────────────
       const APP_BASE = window.location.pathname.startsWith('/hotel50/') ? '/hotel50' : '';
+      const appPath  = (path) => `${APP_BASE}${path}`;
       const form     = document.getElementById('publicRequestForm');
+      const query    = new URLSearchParams(window.location.search);
+      document.getElementById('homeLink').href = appPath('/');
+      document.getElementById('backLink').href = appPath('/');
 
       // Load room categories
       (async () => {
         try {
-          const cats = await fetch(`${APP_BASE}/api/public/room-categories`).then(r => r.json());
+          const cats = await fetch(appPath('/api/public/room-categories')).then(r => r.json());
           const sel  = document.getElementById('roomCategorySelect');
           if (Array.isArray(cats)) {
             cats.forEach(c => {
@@ -424,6 +428,8 @@
               sel.appendChild(opt);
             });
           }
+          const requested = query.get('room_category') || '';
+          if (requested) sel.value = requested;
         } catch(_) {}
       })();
       const msgWrap  = document.getElementById('statusMsg');
@@ -452,7 +458,7 @@
         btn.disabled = true;
         try {
           const payload = Object.fromEntries(new FormData(form).entries());
-          const res  = await fetch(`${APP_BASE}/api/public/booking-requests`, {
+          const res  = await fetch(appPath('/api/public/booking-requests'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -464,6 +470,7 @@
           form.querySelector('[name="check_in"]').min      = today;
           form.querySelector('[name="check_out"]').min     = today;
           form.querySelector('[name="people_count"]').value = '1';
+          form.querySelector('[name="room_category"]').value = query.get('room_category') || '';
           showStatus('Sorğu göndərildi. Sizinlə ən qısa zamanda əlaqə saxlanılacaq.', 'ok');
         } catch (err) {
           showStatus(err.message, 'err');
